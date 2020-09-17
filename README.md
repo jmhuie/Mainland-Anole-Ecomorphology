@@ -1,2 +1,2 @@
-# Anole_Ecomorphology
+# Anole-Ecomorphology
 Repo for all things anole ecomorphology
