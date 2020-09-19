@@ -8,7 +8,7 @@ ggplot.pca <- function(pca, species, groups, region = NewData$Region, axis1, axi
   hulls <- hulls[!hulls$Group=="Mainland" & !hulls$Group=="Unknown",] 
   plot <- ggplot(scores, aes(x = setNames(scores[,axis1],species), y = setNames(scores[,axis2],species), col = Group))+
     geom_polygon(data=hulls, aes(x = hulls[,axis1], y = hulls[,axis2], group=Group, fill = Group), alpha = 0.4, show.legend = FALSE) +# size = 0.75)+
-    geom_point(aes(fill=Group, shape=(scores$Region)), colour = "black", size = 1.5) +
+    geom_point(aes(fill=Group, shape=(Region)), colour = "black", size = 1.5) +
     labs(fill = "Ecomorph") +
     scale_shape_manual(values = c(21,24)) +
     scale_colour_manual(values = col) +
