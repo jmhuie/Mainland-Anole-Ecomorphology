@@ -1,3 +1,11 @@
+##### phylo scree plot #####
+plot.phyl.pca<- function(x,...){
+  if(hasArg(main)) main<-list(...)$main
+  else main="screeplot"
+  x$sdev<-sqrt(diag(x$Eval))
+  screeplot(x,main=main)
+}
+
 ##### ggplot pca #####
 ggplot.pca <- function(pca, species, groups, region = NewData$Region, axis1, axis2, labels) {
   scores <- as.data.frame(pca$S)
