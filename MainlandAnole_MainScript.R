@@ -1,4 +1,4 @@
-rm(list = ls(all=TRUE))
+#rm(list = ls(all=TRUE))
 source("MainlandAnole_Functions.R")
 library(tidyverse)
 library(readxl)
@@ -6,10 +6,12 @@ library(phytools)
 library(factoextra)
 library(geometry)
 library(plyr)
+library(ggpubr)
+library(MASS)
 
 # Read Tree ---------------------------------------------------------------
 
-EcoData <- read_excel("MainlandAnole_SpeciesList.xlsx")%>%
+EcoData <- read_excel("Data/MainlandAnole_SpeciesList.xlsx")%>%
   as.data.frame
 rownames(EcoData) <- EcoData$Species 
 EcoData <- EcoData[sort(EcoData$Species),]
@@ -168,19 +170,24 @@ tapply(criteria4$Pred.Eco,criteria4$Pred.Eco,length)
 
 compile <- compilation(lda = criteria.lda, c1=criteria1, c2 = criteria2, 
                        c3 = criteria3, c4 = criteria4)
+compile[[1]]
 tapply(compile[[1]]$Predicted,compile[[1]]$Ecomorph,length)
 tapply(compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "Mainland")],compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "Mainland")],length)
 
 
 Pred.Eco <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ecomorph)
+rownames(Pred.Eco) <- Pred.Eco$Species
 #all(match(Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
-Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species)),2] <- compile[[1]]$Predicted
+#Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species)),2] <- compile[[1]]$Predicted
+Pred.Eco[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
+Pred.Eco[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2[criteria3[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
 
 ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
            groups = Pred.Eco$Pred.Eco, labels = FALSE)
 
 
-
+Pred.Eco[which(!is.na(criteria3$Pred.Eco)),2] <- criteria3[which(!is.na(criteria3$Pred.Eco)),"Pred.Eco"]
+Pred.Eco[which(!is.na(criteria2$Pred.Eco)),2] <- criteria3[which(!is.na(criteria2$Pred.Eco)),"Pred.Eco"]
 
 # DFA w/ Ground -----------------------------------------------------------
 
@@ -231,7 +238,7 @@ tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "Mainland"
 
 # predict ecomorphs based on certain criteria
 
-predicted <- predict.class(scores = phylopca$S[,1:6], species = tree$tip.label, 
+predicted <- predict.class(scores = phylopca$S[,1:5], species = tree$tip.label, 
                            groups = NewData$Ground)
 criteria1 <- predicted$criteria1
 criteria2 <- predicted$criteria2
@@ -242,18 +249,45 @@ criteria4 <- predicted$criteria4
 tapply(criteria4$Pred.Eco,criteria4$Pred.Eco,length)
 
 
-
 # Compile w/ Ground -------------------------------------------------------
 
 compile2 <- compilation(lda = criteria.lda, c1=criteria1, c2 = criteria2, 
                         c3 = criteria3, c4 = criteria4)
+compile2[[1]]
 compile[[1]]$Species[which(is.na(match(compile[[1]]$Species, compile2[[1]]$Species)))]
-
 
 tapply(compile2[[1]]$Predicted,compile2[[1]]$Ecomorph,length)
 tapply(compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "Mainland")],
        compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "Mainland")],length)
 #Pred.ground <- Pred.ground[which(Pred.ground$Ecomorph == "Unknown"),]
 
+Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
+rownames(Pred.Eco2) <- Pred.Eco2$Species
+#all(match(Pred.Eco[,1]!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
+#Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2[[1]]$Species)),2] <- compile2[[1]]$Predicted
+Pred.Eco2[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3$Pred.Eco[which(!is.na(criteria3$Pred.Eco))] #Irshick and Losos 97
+Pred.Eco2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2$Pred.Eco[which(!is.na(criteria2$Pred.Eco))] #Irshick and Losos 97
 
 
+ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
+           groups = Pred.Eco2$Pred.Eco, labels = FALSE)
+
+
+
+# L1ou attempt ------------------------------------------------------------
+tree <- force.ultrametric(tree)
+lizard <- adjust_data(tree,as.matrix(phylopca$S[,1:5]))
+fit_ind_AIC <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 7, criterion = "BIC")
+fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind_AIC,nItrs = 100, multicore = T, nCores=4)
+
+fit_conv_BIC <- estimate_convergent_regimes(fit_ind_BIC, criterion = "BIC", nCores = 7)
+plot(fit_conv_AIC, show.data	= FALSE)
+
+fit_conv_AIC$shift.configuration
+plot(fit_ind_AIC, edge.ann.cex=1, cex=0.5, label.offset=0.02, edge.label.ann = FALSE)
+
+
+nEdges <- Nedge(lizard$tree) # total number of edges
+ew <- rep(1,nEdges)  # to set default edge width of 1
+ew[fit_ind_AIC$shift.configuration] <- 3   # to widen edges with a shift 
+plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
