@@ -1,4 +1,4 @@
-#rm(list = ls(all=TRUE))
+rm(list = ls(all=TRUE))
 source("MainlandAnole_Functions.R")
 library(tidyverse)
 library(readxl)
@@ -9,12 +9,43 @@ library(plyr)
 library(ggpubr)
 library(MASS)
 
-# Read Tree ---------------------------------------------------------------
+
+# Perch Data --------------------------------------------------------
 
 EcoData <- read_excel("Data/MainlandAnole_SpeciesList.xlsx")%>%
   as.data.frame
 rownames(EcoData) <- EcoData$Species 
 EcoData <- EcoData[sort(EcoData$Species),]
+
+RawPerch <- read_excel("Data/MainlandAnole_EcoData.xlsx") %>%
+  filter(., Quality == "S" | Quality == "AS" ) %>%
+  dplyr::select(.,Species,'Height N','Perch Height (m)','Diameter N', 'Perch Diameter (cm)') 
+colnames(RawPerch) <- c("Species", "PH.N", "PH", "PD.N", "PD")
+RawPerch[is.na(RawPerch)] <- 1
+PerchData <- matrix(nrow =length(unique(RawPerch$Species)), ncol = 3) %>% as.data.frame
+colnames(PerchData) <- c("Species", "PH", "PD")
+PerchData[,1] <- unique(RawPerch$Species)
+
+for (i in 1:nrow(PerchData)) {
+  species <- as.character(PerchData[i,1])
+  PerchData[i,2] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PH"])),
+                                  w = as.numeric(unlist(filter(RawPerch, Species == species)[,"PH.N"]/
+                                  sum(filter(RawPerch, Species == species)[,"PH.N"])))),2) 
+                
+  PerchData[i,3] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PD"])),
+                                  w = as.numeric(unlist(filter(RawPerch, Species == species)[,"PD.N"]/
+                                  sum(filter(RawPerch, Species == species)[,"PD.N"])))),2)
+  remove(species)
+}
+
+EcoData <- left_join(EcoData,PerchData)
+EcoData <- filter(EcoData, Region == "Caribbean" & !is.na(Ecology) | Region == "Mainland" | Region == "Island")
+remove(PerchData,RawPerch)
+
+#plot(EcoData$PH~EcoData$PD, col = col[EcoData$Ground], pch = 19, cex = 1)
+#text(EcoData$PH~EcoData$PD, col = col[EcoData$Ground], label = EcoData$Species)
+
+# Read Tree ---------------------------------------------------------------
 
 tree <- read.nexus("Trees/Poe_2017_MCC_names.txt")
 tree <- ladderize(tree, right = FALSE)
@@ -22,7 +53,7 @@ tree <- drop.tip(tree, setdiff(tree$tip.label, unique(EcoData$Species))) #keeps 
 
 #plotTree(tree, size = .5)
 
-# Morphology Data Cleaning -----------------------------------------------------------
+# Morphology Data Cleaning ------------------------------------------------
 
 MorphoData <- read_excel("Data/MainlandAnole_MorphoData.xlsx", sheet = 1) %>% #Read in full data
 #MorphoData <- read.csv("AnoleDataClean.csv", header = TRUE, sep = ",", na.strings = "") %>%
@@ -77,7 +108,8 @@ remove(tail,tail.resid,phyl.resid)
 
 # PCA ---------------------------------------------------------------------
 
-phylopca <- phyl.pca(tree, NewData[,5:17], method = "BM", mode = "cov")
+phylopca <- phyl.pca(tree, NewData[,8:20], method = "BM", mode = "cov")
+phylopca$L
 plot.phyl.pca(phylopca)
 summary(phylopca)
 
@@ -111,10 +143,10 @@ ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species,
 EcomorphData <- NewData[which(!NewData$Ecomorph == "Mainland" & !NewData$Ecomorph == "Unknown"),]
 EcomorphData <- droplevels(EcomorphData)
 
-summary(manova(as.matrix(EcomorphData[,c(5:17)])~EcomorphData$Ecomorph), test = "Wilks")
+summary(manova(as.matrix(EcomorphData[,c(8:20)])~EcomorphData$Ecomorph), test = "Wilks")
 
 LDA <- lda(EcomorphData$Ecomorph ~ ., 
-           data = EcomorphData[,c(5:17)],
+           data = EcomorphData[,c(8:20)],
            prior = c(rep(1/6, 6)), CV = FALSE) # initial LDA
 
 assessment <- predict(LDA)
@@ -137,7 +169,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp < 0.90) {
+  if (tmp < 0.95) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -178,9 +210,9 @@ tapply(compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "Mainland")],compil
 Pred.Eco <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ecomorph)
 rownames(Pred.Eco) <- Pred.Eco$Species
 #all(match(Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
-#Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species)),2] <- compile[[1]]$Predicted
-Pred.Eco[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
-Pred.Eco[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2[criteria3[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
+Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species)),2] <- compile[[1]]$Predicted
+#Pred.Eco[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
+#Pred.Eco[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2[criteria3[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
 
 ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
            groups = Pred.Eco$Pred.Eco, labels = FALSE)
@@ -194,10 +226,10 @@ Pred.Eco[which(!is.na(criteria2$Pred.Eco)),2] <- criteria3[which(!is.na(criteria
 EcomorphData <- NewData[which(!NewData$Ground == "Mainland" & !NewData$Ground == "Unknown"),]
 EcomorphData <- droplevels(EcomorphData)
 
-summary(manova(as.matrix(EcomorphData[,c(5:17)])~EcomorphData$Ground), test = "Wilks")
+summary(manova(as.matrix(EcomorphData[,c(8:20)])~EcomorphData$Ground), test = "Wilks")
 
 LDA <- lda(EcomorphData$Ground ~ ., 
-           data = EcomorphData[,c(5:17)],
+           data = EcomorphData[,c(8:20)],
            prior = c(rep(1/7, 7)), CV = FALSE) # initial LDA
 
 assessment <- predict(LDA)
@@ -221,7 +253,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp < 0.90) {
+  if (tmp < 0.95) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -264,12 +296,13 @@ tapply(compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "Mainland")],
 Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
 rownames(Pred.Eco2) <- Pred.Eco2$Species
 #all(match(Pred.Eco[,1]!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
-#Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2[[1]]$Species)),2] <- compile2[[1]]$Predicted
-Pred.Eco2[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3$Pred.Eco[which(!is.na(criteria3$Pred.Eco))] #Irshick and Losos 97
-Pred.Eco2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2$Pred.Eco[which(!is.na(criteria2$Pred.Eco))] #Irshick and Losos 97
+Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2[[1]]$Species)),2] <- compile2[[1]]$Predicted
+
+#Pred.Eco2[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3$Pred.Eco[which(!is.na(criteria3$Pred.Eco))] #Irshick and Losos 97
+#Pred.Eco2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2$Pred.Eco[which(!is.na(criteria2$Pred.Eco))] #Irshick and Losos 97
 
 
-ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
+ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label, 
            groups = Pred.Eco2$Pred.Eco, labels = FALSE)
 
 
