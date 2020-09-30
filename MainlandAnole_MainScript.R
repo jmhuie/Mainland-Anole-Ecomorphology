@@ -297,7 +297,6 @@ Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
 rownames(Pred.Eco2) <- Pred.Eco2$Species
 #all(match(Pred.Eco[,1]!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
 Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2[[1]]$Species)),2] <- compile2[[1]]$Predicted
-
 #Pred.Eco2[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3$Pred.Eco[which(!is.na(criteria3$Pred.Eco))] #Irshick and Losos 97
 #Pred.Eco2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2$Pred.Eco[which(!is.na(criteria2$Pred.Eco))] #Irshick and Losos 97
 
