@@ -328,9 +328,11 @@ plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
 
 # Randomization Tests -----------------------------------------------------
 
-Ecomorph.Scores <- cbind("Ground" = NewData$Ground,as.data.frame(phylopca$S))
+Ecomorph.Scores <- cbind("Ground" = NewData$Ground,as.data.frame(phylopca$S)) %>%
+  filter(., !Ground == "Mainland" & !Ground == "Unknown")
 
-centroid.dist <- function(scores, axes, group1, group2, nsim = 1000) {
+# perform randomization
+random.dist <- function(scores, axes, group1, group2, nsim = 1000) {
   scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
   group <- scores[,1]
 
@@ -362,31 +364,47 @@ centroid.dist <- function(scores, axes, group1, group2, nsim = 1000) {
       dummy.dist[i] <- dummy.dfa.table[2,1] #isolate centroid dist
     }
   
-  
   pval <- length(which(dist < (dummy.dist)))/nsim
-  
+
   return(list(dist = dist, sim = dummy.dist, pval = pval))
   
 }
-centroid.dist(scores = Ecomorph.Scores, axes = 5, group1 = "Ground", group2 = "Trunk Crown")
+
+# do multiple corrections for either randomization tests or simulated test
+posthoc.cross <- function(scores, axes, nsim = 1000, fun, p.adj = "holm") {
+  bon<- matrix(NA,length(unique(scores[,1])),length(unique(scores[,1])))
+  colnames(bon) <- sort(unique(scores[,1]));rownames(bon) <- sort(unique(scores[,1]))
+  dat <- bon
+  cross <- crossing(colnames(bon),rownames(bon))
+  cross <- cross[!duplicated(t(apply(cross, 1, sort))),]
+  cross <- cross[which(!cross[,1] == cross[,2]),]
+  cross <- as.data.frame(cross)
+  
+  if (fun == "random.dist") {
+    for (i in 1:nrow(cross)){
+      dist <- centroid.dist(scores = scores, axes = axes, group1 = cross[i,2], group2 = cross[i,1], nsim = nsim)
+      dat[cross[i,2],cross[i,1]] <- dist$dist
+      bon[cross[i,2],cross[i,1]] <- dist$pval
+    }
+  }
+  
+  if (fun == "sim.dist") {
+    for (i in 1:nrow(cross)){
+      dist <- sim.dist(tree, scores = scores, axes = axes, group1 = cross[i,2], group2 = cross[i,1], nsim = nsim)
+      dat[cross[i,2],cross[i,1]] <- dist$dist
+      bon[cross[i,2],cross[i,1]] <- dist$pval
+    }
+  }
+  posthoc <- matrix((p.adjust(bon, method = p.adj)),ncol(bon),nrow(bon))
+  dimnames(posthoc) <- dimnames(bon)
+  return(list("dist" = dat, "Pf" = bon, "Pt" = posthoc))
+}
+bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun  = "random.dist", p.adj = "holm")
 
 # Simulated Trait Data ----------------------------------------------------
 
-# start by determining the best models of trait evolution for the first 5 PC axes
-# quick function to compare BM OU and EB models for a given tree and trait vector
-compare.fit <- function(tree, x){
-  fitBM <- fitContinuous(tree, x)
-  fitOU <- fitContinuous(tree, x, model="OU")
-  fitEB <- fitContinuous(tree, x, model="EB")
-  aic.vals<-setNames(c(fitBM$opt$aicc,fitOU$opt$aicc,fitEB$opt$aicc),
-                   c("BM","OU","EB"))
-  return(aic.vals)
-}
-compare.fit(tree = tree, x = phylopca$S[,1])
-# PC 1 - EB # PC 2 - BM # PC 3 - OU barely # PC 4 - BM # PC 5 - OU
-
 #simulate data for 5 axes under BM
-sim.dist <- function(tree, scores, axes, group1, group2, nsim = 1000) {
+sim.dist <- function(tree = tree, scores, axes, group1, group2, nsim = 1000) {
   scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
   group <- scores[,1]
   trials <- nsim
@@ -402,11 +420,11 @@ sim.dist <- function(tree, scores, axes, group1, group2, nsim = 1000) {
   #perform centroid comparison with simulated data
     dummy.dist <- c(1:trials)
     for (i in 1:trials) {
-      simdata <- fastBM(tree = tree,nsim = axes)
-      simdata <- cbind(group,as.data.frame(simdata[rownames(scores),]))
+      simdata <- fastBM(tree = tree,nsim = axes) # simulate data under BM
+      simdata <- cbind(group,as.data.frame(simdata[rownames(scores),])) # prep simulated data frame
       
       #calculate actual centroid distance
-      dummy.group.centroids <- (aggregate(simdata[,-1], list(simdata[,1]), mean)) # calculates centroid for each  group
+      dummy.group.centroids <- (aggregate(simdata[,-1], list(simdata[,1]), mean)) # calculates centroid for each group
       #rownames(group.centroids) <- group.centroids[,1]
       dummy.group.centroids <- dummy.group.centroids %>%
         dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
@@ -420,5 +438,8 @@ sim.dist <- function(tree, scores, axes, group1, group2, nsim = 1000) {
   return(list(dist = dist, sim = dummy.dist, pval = pval))
   
 }
-sim.dist(tree, scores = Ecomorph.Scores, axes = 5, nsim = 1000, group1 = "Trunk Ground", group2 = "Trunk Crown")
+
+# all ecomorph comparisons with multi comparison correction
+bon <- posthoc.cross(Ecomorph.Scores, axes = 5, "sim.dist", p.adj = "holm")
+
 
