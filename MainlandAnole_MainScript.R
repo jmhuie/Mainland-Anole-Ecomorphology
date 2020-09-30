@@ -19,7 +19,8 @@ EcoData <- EcoData[sort(EcoData$Species),]
 
 RawPerch <- read_excel("Data/MainlandAnole_EcoData.xlsx") %>%
   filter(., Quality == "S" | Quality == "AS" ) %>%
-  dplyr::select(.,Species,'Height N','Perch Height (m)','Diameter N', 'Perch Diameter (cm)') 
+  dplyr::select(.,Species,'Height N','Perch Height (m)','Diameter N', 'Perch Diameter (cm)') %>%
+  as.data.frame
 colnames(RawPerch) <- c("Species", "PH.N", "PH", "PD.N", "PD")
 RawPerch[is.na(RawPerch)] <- 1
 PerchData <- matrix(nrow =length(unique(RawPerch$Species)), ncol = 3) %>% as.data.frame
@@ -29,12 +30,12 @@ PerchData[,1] <- unique(RawPerch$Species)
 for (i in 1:nrow(PerchData)) {
   species <- as.character(PerchData[i,1])
   PerchData[i,2] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PH"])),
-                                  w = as.numeric(unlist(filter(RawPerch, Species == species)[,"PH.N"]/
-                                  sum(filter(RawPerch, Species == species)[,"PH.N"])))),2) 
+                                  w = as.numeric(unlist(as.numeric(filter(RawPerch, Species == species)[,"PH.N"])/
+                                  sum(as.numeric(filter(RawPerch, Species == species)[,"PH.N"]))))),2) 
                 
   PerchData[i,3] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PD"])),
-                                  w = as.numeric(unlist(filter(RawPerch, Species == species)[,"PD.N"]/
-                                  sum(filter(RawPerch, Species == species)[,"PD.N"])))),2)
+                                  w = as.numeric(unlist(as.numeric(filter(RawPerch, Species == species)[,"PD.N"])/
+                                  sum(as.numeric(filter(RawPerch, Species == species)[,"PD.N"]))))),2)
   remove(species)
 }
 
@@ -302,34 +303,13 @@ Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2[[1]]$Species)),2] <- compile2[
 
 
 ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label, 
-           groups = Pred.Eco2$Pred.Eco, labels = FALSE)
-
-
-
-# L1ou attempt ------------------------------------------------------------
-tree <- force.ultrametric(tree)
-lizard <- adjust_data(tree,as.matrix(phylopca$S[,1:5]))
-fit_ind_AIC <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 7, criterion = "BIC")
-fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind_AIC,nItrs = 100, multicore = T, nCores=4)
-
-fit_conv_BIC <- estimate_convergent_regimes(fit_ind_BIC, criterion = "BIC", nCores = 7)
-plot(fit_conv_AIC, show.data	= FALSE)
-
-fit_conv_AIC$shift.configuration
-plot(fit_ind_AIC, edge.ann.cex=1, cex=0.5, label.offset=0.02, edge.label.ann = FALSE)
-
-
-nEdges <- Nedge(lizard$tree) # total number of edges
-ew <- rep(1,nEdges)  # to set default edge width of 1
-ew[fit_ind_AIC$shift.configuration] <- 3   # to widen edges with a shift 
-plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
-
+           groups = Pred.Eco2$Pred.Eco, labels = TRUE)
 
 
 # Randomization Tests -----------------------------------------------------
 
-Ecomorph.Scores <- cbind("Ground" = NewData$Ground,as.data.frame(phylopca$S)) %>%
-  filter(., !Ground == "Mainland" & !Ground == "Unknown")
+Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground,as.data.frame(phylopca$S)) %>%
+  filter(., !Ecomorph == "Mainland" & !Ecomorph == "Unknown")
 
 # perform randomization
 random.dist <- function(scores, axes, group1, group2, nsim = 1000) {
@@ -370,6 +350,7 @@ random.dist <- function(scores, axes, group1, group2, nsim = 1000) {
   
 }
 
+
 # do multiple corrections for either randomization tests or simulated test
 posthoc.cross <- function(scores, axes, nsim = 1000, fun, p.adj = "holm") {
   bon<- matrix(NA,length(unique(scores[,1])),length(unique(scores[,1])))
@@ -399,7 +380,7 @@ posthoc.cross <- function(scores, axes, nsim = 1000, fun, p.adj = "holm") {
   dimnames(posthoc) <- dimnames(bon)
   return(list("dist" = dat, "Pf" = bon, "Pt" = posthoc))
 }
-bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun  = "random.dist", p.adj = "holm")
+bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "random.dist", p.adj = "holm")
 
 # Simulated Trait Data ----------------------------------------------------
 
@@ -440,6 +421,25 @@ sim.dist <- function(tree = tree, scores, axes, group1, group2, nsim = 1000) {
 }
 
 # all ecomorph comparisons with multi comparison correction
-bon <- posthoc.cross(Ecomorph.Scores, axes = 5, "sim.dist", p.adj = "holm")
+bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "sim.dist", p.adj = "holm")
+
+
+# L1ou attempt ------------------------------------------------------------
+tree <- force.ultrametric(tree)
+lizard <- adjust_data(tree,as.matrix(phylopca$S[,1:5]))
+fit_ind_AIC <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 7, criterion = "BIC")
+fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind_AIC,nItrs = 100, multicore = T, nCores=4)
+
+fit_conv_BIC <- estimate_convergent_regimes(fit_ind_BIC, criterion = "BIC", nCores = 7)
+plot(fit_conv_AIC, show.data	= FALSE)
+
+fit_conv_AIC$shift.configuration
+plot(fit_ind_AIC, edge.ann.cex=1, cex=0.5, label.offset=0.02, edge.label.ann = FALSE)
+
+
+nEdges <- Nedge(lizard$tree) # total number of edges
+ew <- rep(1,nEdges)  # to set default edge width of 1
+ew[fit_ind_AIC$shift.configuration] <- 3   # to widen edges with a shift 
+plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
 
 
