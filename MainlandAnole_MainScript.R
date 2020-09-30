@@ -50,8 +50,8 @@ remove(PerchData,RawPerch)
 tree <- read.nexus("Trees/Poe_2017_MCC_names.txt")
 tree <- ladderize(tree, right = FALSE)
 tree <- drop.tip(tree, setdiff(tree$tip.label, unique(EcoData$Species))) #keeps tip labels that matches vector
-
-#plotTree(tree, size = .5)
+plotTree(tree, size = .5) # plot tree. looks pretty ultrametric but R doesn't think so
+tree <- force.ultrametric(tree) # forces tree to be ultrametric
 
 # Morphology Data Cleaning ------------------------------------------------
 
@@ -324,3 +324,68 @@ nEdges <- Nedge(lizard$tree) # total number of edges
 ew <- rep(1,nEdges)  # to set default edge width of 1
 ew[fit_ind_AIC$shift.configuration] <- 3   # to widen edges with a shift 
 plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
+
+
+
+# Randomization Tests -----------------------------------------------------
+
+Ecomorph.Scores <- cbind("Ground" = as.character(NewData$Ground[which(!NewData$Ground == "Mainland" & !NewData$Ground == "Unknown")]), 
+                        as.data.frame(phylopca$S[which(!NewData$Ground == "Mainland" & !NewData$Ground == "Unknown"),]))
+
+centroid.dist <- function(scores = Ecomorph.Scores, axes = 5, group1, group2, nsim = 1000) {
+  scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
+  group <- scores[,1]
+  
+  #calculate actual centroid distance
+  group.centroids <- (aggregate(scores[,-1], list(group), mean)) # calculates centroid for each  group
+  #rownames(group.centroids) <- group.centroids[,1]
+  group.centroids <- group.centroids %>%
+    dplyr::select(., 2:ncol(group.centroids)) %>%
+    as.data.frame
+  dfa <- as.matrix(dist(group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
+  dist <- dfa[2,1] #isolate centroid dist
+  
+  #calculate randomized centroid distances
+  dummy.dfa <- c(1:nsim)
+  for (i in 1:nsim) {
+    group1.count <- tapply(scores[,1],scores[,1],length)[1] # how many species are in group 1
+    dummy.scores <- scores
+    sample <- sample(1:nrow(dummy.scores),group1.count)
+    dummy.scores[sample,1] <- group1
+    dummy.scores[is.na(match(1:nrow(scores),sample)),1] <- group2
+    
+    dummy.group <- dummy.scores[,1]
+    
+    dummy.group.centroids <- (aggregate(dummy.scores[,-1], list(dummy.group), mean)) # calculates centroid for each  group
+    dummy.group.centroids <- dummy.group.centroids %>%
+      dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
+      as.data.frame
+    dummy.dfa.table <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
+    dummy.dfa[i] <- dummy.dfa.table[2,1] #isolate centroid dist
+  }
+  
+  pval <- length(which(dist < (dummy.dfa)))/nsim
+  
+  return(list(dist = dist, sim = dummy.dfa, pval = pval))
+  
+}
+centroid.dist(group1 = "Twig", group2 = "Trunk Crown")
+
+# Simulated Trait Data ----------------------------------------------------
+
+# start by determining the best models of trait evolution for the first 5 PC axes
+# quick function to compare BM OU and EB models for a given tree and trait vector
+compare.fit <- function(tree, x){
+  fitBM <- fitContinuous(tree, x)
+  fitOU <- fitContinuous(tree, x, model="OU")
+  fitEB <- fitContinuous(tree, x, model="EB")
+  aic.vals<-setNames(c(fitBM$opt$aicc,fitOU$opt$aicc,fitEB$opt$aicc),
+                   c("BM","OU","EB"))
+  return(aic.vals)
+}
+compare.fit(tree = tree, x = phylopca$S[,1])
+# PC 1 - EB # PC 2 - BM # PC 3 - OU barely # PC 4 - BM # PC 5 - OU
+
+#simulate data for 5 axes under BM
+simdata <- fastBM(tree,nsim = 5)
+
