@@ -328,13 +328,12 @@ plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
 
 # Randomization Tests -----------------------------------------------------
 
-Ecomorph.Scores <- cbind("Ground" = as.character(NewData$Ground[which(!NewData$Ground == "Mainland" & !NewData$Ground == "Unknown")]), 
-                        as.data.frame(phylopca$S[which(!NewData$Ground == "Mainland" & !NewData$Ground == "Unknown"),]))
+Ecomorph.Scores <- cbind("Ground" = NewData$Ground,as.data.frame(phylopca$S))
 
-centroid.dist <- function(scores = Ecomorph.Scores, axes = 5, group1, group2, nsim = 1000) {
+centroid.dist <- function(scores, axes, group1, group2, nsim = 1000) {
   scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
   group <- scores[,1]
-  
+
   #calculate actual centroid distance
   group.centroids <- (aggregate(scores[,-1], list(group), mean)) # calculates centroid for each  group
   #rownames(group.centroids) <- group.centroids[,1]
@@ -344,31 +343,32 @@ centroid.dist <- function(scores = Ecomorph.Scores, axes = 5, group1, group2, ns
   dfa <- as.matrix(dist(group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
   dist <- dfa[2,1] #isolate centroid dist
   
-  #calculate randomized centroid distances
-  dummy.dfa <- c(1:nsim)
-  for (i in 1:nsim) {
-    group1.count <- tapply(scores[,1],scores[,1],length)[1] # how many species are in group 1
-    dummy.scores <- scores
-    sample <- sample(1:nrow(dummy.scores),group1.count)
-    dummy.scores[sample,1] <- group1
-    dummy.scores[is.na(match(1:nrow(scores),sample)),1] <- group2
-    
-    dummy.group <- dummy.scores[,1]
-    
-    dummy.group.centroids <- (aggregate(dummy.scores[,-1], list(dummy.group), mean)) # calculates centroid for each  group
-    dummy.group.centroids <- dummy.group.centroids %>%
-      dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
-      as.data.frame
-    dummy.dfa.table <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
-    dummy.dfa[i] <- dummy.dfa.table[2,1] #isolate centroid dist
-  }
+  #perform randomization tests and calculate centroid distances
+    dummy.dist <- c(1:nsim)
+    for (i in 1:nsim) {
+      group1.count <- tapply(scores[,1],scores[,1],length)[1] # how many species are in group 1
+      dummy.scores <- scores
+      sample <- sample(1:nrow(dummy.scores),group1.count)
+      dummy.scores[sample,1] <- group1
+      dummy.scores[is.na(match(1:nrow(scores),sample)),1] <- group2
+      
+      dummy.group <- dummy.scores[,1]
+      
+      dummy.group.centroids <- (aggregate(dummy.scores[,-1], list(dummy.group), mean)) # calculates centroid for each  group
+      dummy.group.centroids <- dummy.group.centroids %>%
+        dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
+        as.data.frame
+      dummy.dfa.table <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
+      dummy.dist[i] <- dummy.dfa.table[2,1] #isolate centroid dist
+    }
   
-  pval <- length(which(dist < (dummy.dfa)))/nsim
   
-  return(list(dist = dist, sim = dummy.dfa, pval = pval))
+  pval <- length(which(dist < (dummy.dist)))/nsim
+  
+  return(list(dist = dist, sim = dummy.dist, pval = pval))
   
 }
-centroid.dist(group1 = "Twig", group2 = "Trunk Crown")
+centroid.dist(scores = Ecomorph.Scores, axes = 5, group1 = "Ground", group2 = "Trunk Crown")
 
 # Simulated Trait Data ----------------------------------------------------
 
@@ -386,5 +386,39 @@ compare.fit(tree = tree, x = phylopca$S[,1])
 # PC 1 - EB # PC 2 - BM # PC 3 - OU barely # PC 4 - BM # PC 5 - OU
 
 #simulate data for 5 axes under BM
-simdata <- fastBM(tree,nsim = 5)
+sim.dist <- function(tree, scores, axes, group1, group2, nsim = 1000) {
+  scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
+  group <- scores[,1]
+  trials <- nsim
+  #calculate actual centroid distance
+  group.centroids <- (aggregate(scores[,-1], list(group), mean)) # calculates centroid for each  group
+  #rownames(group.centroids) <- group.centroids[,1]
+  group.centroids <- group.centroids %>%
+    dplyr::select(., 2:ncol(group.centroids)) %>%
+    as.data.frame
+  dfa <- as.matrix(dist(group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
+  dist <- dfa[2,1] #isolate centroid dist
+  
+  #perform centroid comparison with simulated data
+    dummy.dist <- c(1:trials)
+    for (i in 1:trials) {
+      simdata <- fastBM(tree = tree,nsim = axes)
+      simdata <- cbind(group,as.data.frame(simdata[rownames(scores),]))
+      
+      #calculate actual centroid distance
+      dummy.group.centroids <- (aggregate(simdata[,-1], list(simdata[,1]), mean)) # calculates centroid for each  group
+      #rownames(group.centroids) <- group.centroids[,1]
+      dummy.group.centroids <- dummy.group.centroids %>%
+        dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
+        as.data.frame
+      dummy.dfa <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
+      dummy.dist[i] <- dummy.dfa[2,1] #isolate centroid dist
+    }
+  
+  pval <- length(which(dist < (dummy.dist)))/trials
+  
+  return(list(dist = dist, sim = dummy.dist, pval = pval))
+  
+}
+sim.dist(tree, scores = Ecomorph.Scores, axes = 5, nsim = 1000, group1 = "Trunk Ground", group2 = "Trunk Crown")
 
