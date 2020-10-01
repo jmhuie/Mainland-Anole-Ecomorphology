@@ -8,6 +8,7 @@ library(geometry)
 library(plyr)
 library(ggpubr)
 library(MASS)
+library(geiger)
 
 
 # Perch Data --------------------------------------------------------
@@ -53,6 +54,7 @@ tree <- ladderize(tree, right = FALSE)
 tree <- drop.tip(tree, setdiff(tree$tip.label, unique(EcoData$Species))) #keeps tip labels that matches vector
 plotTree(tree, size = .5) # plot tree. looks pretty ultrametric but R doesn't think so
 tree <- force.ultrametric(tree) # forces tree to be ultrametric
+dev.off()
 
 # Morphology Data Cleaning ------------------------------------------------
 
@@ -170,7 +172,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp < 0.95) {
+  if (tmp < 0.90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -254,7 +256,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp < 0.95) {
+  if (tmp < 0.90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -363,7 +365,7 @@ posthoc.cross <- function(scores, axes, nsim = 1000, fun, p.adj = "holm") {
   
   if (fun == "random.dist") {
     for (i in 1:nrow(cross)){
-      dist <- centroid.dist(scores = scores, axes = axes, group1 = cross[i,2], group2 = cross[i,1], nsim = nsim)
+      dist <- random.dist(scores = scores, axes = axes, group1 = cross[i,2], group2 = cross[i,1], nsim = nsim)
       dat[cross[i,2],cross[i,1]] <- dist$dist
       bon[cross[i,2],cross[i,1]] <- dist$pval
     }
@@ -380,11 +382,11 @@ posthoc.cross <- function(scores, axes, nsim = 1000, fun, p.adj = "holm") {
   dimnames(posthoc) <- dimnames(bon)
   return(list("dist" = dat, "Pf" = bon, "Pt" = posthoc))
 }
-bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "random.dist", p.adj = "holm")
+#bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "random.dist", p.adj = "holm")
 
 # Simulated Trait Data ----------------------------------------------------
 
-#simulate data for 5 axes under BM
+#simulate data for 5 axes under BM and test differences between ecomorph centroids
 sim.dist <- function(tree = tree, scores, axes, group1, group2, nsim = 1000) {
   scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
   group <- scores[,1]
@@ -399,20 +401,20 @@ sim.dist <- function(tree = tree, scores, axes, group1, group2, nsim = 1000) {
   dist <- dfa[2,1] #isolate centroid dist
   
   #perform centroid comparison with simulated data
-    dummy.dist <- c(1:trials)
-    for (i in 1:trials) {
-      simdata <- fastBM(tree = tree,nsim = axes) # simulate data under BM
-      simdata <- cbind(group,as.data.frame(simdata[rownames(scores),])) # prep simulated data frame
-      
-      #calculate actual centroid distance
-      dummy.group.centroids <- (aggregate(simdata[,-1], list(simdata[,1]), mean)) # calculates centroid for each group
-      #rownames(group.centroids) <- group.centroids[,1]
-      dummy.group.centroids <- dummy.group.centroids %>%
-        dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
-        as.data.frame
-      dummy.dfa <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
-      dummy.dist[i] <- dummy.dfa[2,1] #isolate centroid dist
-    }
+  dummy.dist <- c(1:trials)
+  for (i in 1:trials) {
+    simdata <- fastBM(tree = tree,nsim = axes) # simulate data under BM
+    simdata <- cbind(group,as.data.frame(simdata[rownames(scores),])) # prep simulated data frame
+    
+    #calculate actual centroid distance
+    dummy.group.centroids <- (aggregate(simdata[,-1], list(simdata[,1]), mean)) # calculates centroid for each group
+    #rownames(group.centroids) <- group.centroids[,1]
+    dummy.group.centroids <- dummy.group.centroids %>%
+      dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
+      as.data.frame
+    dummy.dfa <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
+    dummy.dist[i] <- dummy.dfa[2,1] #isolate centroid dist
+  }
   
   pval <- length(which(dist < (dummy.dist)))/trials
   
@@ -422,6 +424,86 @@ sim.dist <- function(tree = tree, scores, axes, group1, group2, nsim = 1000) {
 
 # all ecomorph comparisons with multi comparison correction
 bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "sim.dist", p.adj = "holm")
+
+# simulate data and test compare distance to centroid and NND against null
+sim.ED <- function(tree = tree, scores, axes, nsim = 1000) {
+  #scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
+  scores <- scores[,1:(axes + 1)]
+  groups <- scores[,1]
+  trials <- nsim
+  #calculate actual centroid distance
+  group.centroids <- (aggregate(scores[,-1], list(groups), mean)) # calculates centroid for each  group
+  rownames(group.centroids) <- group.centroids[,1]
+  colnames(group.centroids) <- colnames(scores)
+  df <- rbind(scores,group.centroids)
+  df <- df %>%
+    dplyr::select(., 2:ncol(df)) %>%
+    as.data.frame
+  dfa <- as.matrix(dist(df, method = "euclidean")) # calculates euclidean distances between centroids
+  matrix <- cbind("Species" = rownames(dfa), 
+                  Ecomorph = c(groups,sort(unique(groups))), 
+                  as.data.frame(dfa))
+  matrix[matrix == 0] <- NA
+  rownames(matrix) <- matrix[,1]
+  colnames(matrix) <- c("Species", "Ecomorph", as.character(matrix[,1]))
+  Centroid.matrix <- dfa[1:nrow(scores),(ncol(dfa)-length(unique(groups))+1):ncol(dfa)]
+  
+  Ecomorph.dist <- matrix(NA, length(sort(unique(groups))), 4)
+  rownames(Ecomorph.dist) <- (sort(unique(groups)))
+  colnames(Ecomorph.dist) <- c("Mean Centroid Dist", "Centroid Pval","Mean NDD","NND Pval")
+  for (i in 1:nrow(Ecomorph.dist)) {
+    class <- sort(unique(groups))[i]
+    Ecomorph.dist[class,1] <- mean(Centroid.matrix[which(groups == class),class])
+    members <- rownames(Centroid.matrix)[which(groups == class)]
+    help <- as.matrix(matrix[members,members])
+    Ecomorph.dist[class,3] <- mean(apply(help, 1, FUN = mean, na.rm = TRUE)) #calculates average NND for each ecomorph
+    }
+
+  sim.centroid.dist <- matrix(NA, trials, length(sort(unique(groups)))); colnames(sim.centroid.dist) <- sort(unique(groups))
+  sim.NND.dist <- matrix(NA, trials, length(sort(unique(groups)))); colnames(sim.NND.dist) <- sort(unique(groups))
+  #perform centroid comparison with simulated data
+    for (i in 1:trials) {
+      simdata <- fastBM(tree = tree,nsim = axes) # simulate data under BM
+      simdata <- cbind("Ecomorph" = groups,as.data.frame(simdata[rownames(scores),])) # prep simulated data frame
+      
+      sim.group.centroids <- (aggregate(simdata[,-1], list(groups), mean)) # calculates centroid for each  group
+      rownames(sim.group.centroids) <- sim.group.centroids[,1]
+      colnames(sim.group.centroids) <- colnames(simdata)
+      sim.df <- rbind(simdata,sim.group.centroids)
+      sim.df <- sim.df %>%
+        dplyr::select(., 2:ncol(sim.df)) %>%
+        as.data.frame
+      sim.dfa <- as.matrix(dist(sim.df, method = "euclidean")) # calculates euclidean distances between centroids
+      sim.matrix <- cbind("Species" = rownames(sim.dfa), 
+                      "Ecomorph" = c(groups,sort(unique(groups))), 
+                      as.data.frame(sim.dfa))
+      sim.matrix[sim.matrix == 0] <- NA
+      rownames(sim.matrix) <- sim.matrix[,1]
+      #colnames(sim.matrix) <- c("Species", "Ecomorph", as.character(sim.matrix[,1]))
+      sim.Centroid.matrix <- sim.dfa[1:nrow(simdata),(ncol(sim.dfa)-length(unique(groups))+1):ncol(sim.dfa)]
+      
+      for (y in 1:ncol(sim.centroid.dist)) {
+        sim.class <- sort(unique(groups))[y]
+        sim.centroid.dist[i,sim.class] <- mean(sim.Centroid.matrix[which(groups == sim.class),sim.class])
+        members <- rownames(sim.Centroid.matrix)[which(groups == sim.class)]
+        help <- as.matrix(sim.matrix[members,members])
+        sim.NND.dist[i,sim.class] <- mean(apply(help, 1, FUN = mean, na.rm = TRUE)) #calculates average NND for each ecomorph
+      }
+    }
+    for (i in 1:nrow(Ecomorph.dist)){
+      Ecomorph.dist[i,2] <- 1 - (length(which(Ecomorph.dist[i,1] < (sim.centroid.dist[,i])))/trials)
+      Ecomorph.dist[i,4] <- 1 - (length(which(Ecomorph.dist[i,3] < (sim.NND.dist[,i])))/trials)
+    }
+  
+  
+  
+  
+  return(Ecomorph.dist)
+  
+}
+var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 5, nsim = 1000)
+p.adjust(var[,4], method = "bonferroni")
+
 
 
 # L1ou attempt ------------------------------------------------------------
