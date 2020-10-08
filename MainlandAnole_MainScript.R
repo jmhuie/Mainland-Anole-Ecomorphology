@@ -41,7 +41,8 @@ for (i in 1:nrow(PerchData)) {
 }
 
 EcoData <- left_join(EcoData,PerchData)
-EcoData <- filter(EcoData, Region == "Caribbean" & !is.na(Ecology) | Region == "Mainland" | Region == "Island")
+#EcoData <- filter(EcoData, !is.na(Prior))
+rownames(EcoData) <- EcoData$Species
 remove(PerchData,RawPerch)
 
 #plot(EcoData$PH~EcoData$PD, col = col[EcoData$Ground], pch = 19, cex = 1)
@@ -50,6 +51,7 @@ remove(PerchData,RawPerch)
 # Read Tree ---------------------------------------------------------------
 
 tree <- read.nexus("Trees/Poe_2017_MCC_names.txt")
+#tree <- read.nexus("Trees/Poe_2017_Time_names.tre")
 tree <- ladderize(tree, right = FALSE)
 tree <- drop.tip(tree, setdiff(tree$tip.label, unique(EcoData$Species))) #keeps tip labels that matches vector
 plotTree(tree, size = .5) # plot tree. looks pretty ultrametric but R doesn't think so
@@ -97,6 +99,8 @@ MorphoData <- MorphoData %>%
   summarise_at(vars(SVL:Toe.III.Lam), list(mean), na.rm = TRUE) %>%# finds the species mean for each trait
   as.data.frame
 rownames(MorphoData) <- MorphoData$Species
+MorphoData<-MorphoData[tree$tip.label,]
+
 
 NewData <- MorphoData[tree$tip.label,]
 all(match(NewData$Species, tree$tip.label))
@@ -105,35 +109,34 @@ phyl.resid <- phyl.resid(tree, x = setNames(NewData$SVL,NewData$Species), Y = Ne
 NewData[,3] <-tail.resid$resid
 NewData[,4:19]<-phyl.resid$resid
 NewData <- NewData[,c(1:3,5:9,11:13,15,17,19,21,23)]
-NewData <- cbind(EcoData,NewData[EcoData$Species,-1])
-remove(tail,tail.resid,phyl.resid)
+NewData <- cbind(EcoData[tree$tip.label,-c(4,6,7)],NewData[tree$tip.label,-1])
+remove(tail,tail.resid,phyl.resid,MorphoData)
 
 
 # PCA ---------------------------------------------------------------------
 
-phylopca <- phyl.pca(tree, NewData[,8:20], method = "BM", mode = "cov")
+phylopca <- phyl.pca(tree, NewData[tree$tip.label,5:17], method = "BM", mode = "cov")
 phylopca$L
-plot.phyl.pca(phylopca)
-summary(phylopca)
+plot.phyl.pca(phylopca, type = "lines")
 
-col <- setNames(c("Blue", "Gold","cyan","grey73", "Red", "ForestGreen", "tan4", "Purple4", "Darkorange1"),sort(unique(NewData$Ground)))
-col2 <- setNames(c("Blue","Gold","grey73", "Red", "ForestGreen", "tan4", "Purple4", "Darkorange1"),sort(unique(NewData$Ecomorph)))
+col <- setNames(c("Blue","cyan", "Gold", "grey73", "ForestGreen", "tan4", "Red", "Purple4", "Darkorange1"),sort(unique(NewData$Ground)))
+col2 <- setNames(c("Blue", "Gold", "grey73", "ForestGreen", "tan4", "Red", "Purple4", "Darkorange1"),sort(unique(NewData$Ecomorph)))
 
-species = rownames(phylopca$S)
+species <- rownames(phylopca$S)
 eco <- setNames(NewData[species,"Ground"], species)
 phylopca$S[,c(2)] <-  phylopca$S[,c(2)] *-1
 ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species, 
-                groups = eco, labels = FALSE, 
+                groups = eco, labels = F, 
                 region = NewData[species,"Region"]),
           ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = species, 
-                groups = eco, labels = FALSE, 
+                groups = eco, labels = F, 
                 region = NewData[species,"Region"]),
           ggplot.pca(pca = phylopca, axis1 = 4, axis2 =3, species = species, 
-                groups = eco, labels = FALSE, 
+                groups = eco, labels = F, 
                 region = NewData[species,"Region"]) + 
                 scale_y_continuous(labels = scales::number_format(accuracy = 0.1)),
           ggplot.pca(pca = phylopca, axis1 = 4, axis2 =5, species = species, 
-                groups = eco, labels = FALSE, 
+                groups = eco, labels = F, 
                 region = NewData[species,"Region"]),
           ncol =2,nrow =2)
 #ggsave(tail.phy.pc, filename = "PCA2.pdf",  bg = "transparent", height = 15, width = 15)
@@ -143,13 +146,13 @@ ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species,
 
 # DFA w/ Caribbean --------------------------------------------------------
 
-EcomorphData <- NewData[which(!NewData$Ecomorph == "Mainland" & !NewData$Ecomorph == "Unknown"),]
+EcomorphData <- NewData[which(!NewData$Ecomorph == "M" & !NewData$Ecomorph == "U"),]
 EcomorphData <- droplevels(EcomorphData)
 
-summary(manova(as.matrix(EcomorphData[,c(8:20)])~EcomorphData$Ecomorph), test = "Wilks")
+summary(manova(as.matrix(EcomorphData[,c(5:17)])~EcomorphData$Ecomorph), test = "Wilks")
 
 LDA <- lda(EcomorphData$Ecomorph ~ ., 
-           data = EcomorphData[,c(8:20)],
+           data = EcomorphData[,c(5:17)],
            prior = c(rep(1/6, 6)), CV = FALSE) # initial LDA
 
 assessment <- predict(LDA)
@@ -162,26 +165,26 @@ EcomorphData$Species[which(!assessment$class == EcomorphData$Ecomorph)]
 #EcomorphData$Species[which(!LDA$class == EcomorphData$Ecomorph)]
 #LDA$class[which(!LDA$class == EcomorphData$Ecomorph)]
 
-predictions <- predict(LDA, as.data.frame(NewData[which(NewData$Ecomorph == "Mainland" | NewData$Ecomorph == "Unknown"),]))
+predictions <- predict(LDA, as.data.frame(NewData[which(NewData$Ecomorph == "M" | NewData$Ecomorph == "U"),]))
 
 criteria.lda <- cbind(Species = rownames(predictions$x), 
-                      Ecomorph = as.character(NewData$Ecomorph[which(NewData$Ecomorph == "Mainland" | NewData$Ecomorph == "Unknown")]),
+                      Ecomorph = as.character(NewData$Ecomorph[which(NewData$Ecomorph == "M" | NewData$Ecomorph == "U")]),
                       round(predictions$posterior,3), 
                       Pred.Eco = as.character(predictions$class))
 #removes species with post prob >90
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp < 0.90) {
+  if (tmp > 0.90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
 criteria.lda.trim <- as.data.frame(criteria.lda.trim[which(!is.na(criteria.lda.trim[,"Pred.Eco"])),])
 
-tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "Mainland" | criteria.lda.trim$Ecomorph == "Unknown")],
-       criteria.lda.trim$Ecomorph[which(criteria.lda.trim$Ecomorph == "Mainland" | criteria.lda.trim$Ecomorph == "Unknown")],length)
-tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "Mainland")],
-       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "Mainland")],length)
+tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],
+       criteria.lda.trim$Ecomorph[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],length)
+tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
+       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],length)
 
 
 
@@ -193,46 +196,43 @@ predicted <- predict.class(scores = phylopca$S[tree$tip.label,1:5], species = tr
                            groups = setNames(NewData[tree$tip.label,"Ecomorph"],tree$tip.label))
 criteria1 <- predicted$criteria1
 criteria2 <- predicted$criteria2
-tapply(criteria2$Pred.Eco,criteria2$Pred.Eco,length)
+tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
 criteria3 <- predicted$criteria3
-tapply(criteria3$Pred.Eco,criteria3$Pred.Eco,length)
+tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
 criteria4 <- predicted$criteria4
-tapply(criteria4$Pred.Eco,criteria4$Pred.Eco,length)
+tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
 
 
 
 # Compile w/Caribbean -----------------------------------------------------
 
-compile <- compilation(lda = criteria.lda, c1=criteria1, c2 = criteria2, 
-                       c3 = criteria3, c4 = criteria4)
+compile <- compilation(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9)
 compile[[1]]
 tapply(compile[[1]]$Predicted,compile[[1]]$Ecomorph,length)
-tapply(compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "Mainland")],compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "Mainland")],length)
+tapply(compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "M")],compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "M")],length)
 
 
-Pred.Eco <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ecomorph)
+Pred.Eco <- data.frame(Species = NewData$Species, Region = NewData$Region, Pred.Eco = NewData$Ecomorph)
 rownames(Pred.Eco) <- Pred.Eco$Species
 #all(match(Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
-Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species)),2] <- compile[[1]]$Predicted
-#Pred.Eco[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
-#Pred.Eco[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2[criteria3[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
+Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species)),"Pred.Eco"] <- compile[[1]]$Predicted
+#Pred.Eco[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] <- criteria3[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
+#Pred.Eco[criteria2[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] <- criteria2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
+#tapply(filter(Pred.Eco,Region == "Mainland")$Pred.Eco,filter(Pred.Eco,Region == "Mainland")$Pred.Eco,length) #Irshick and Losos 97
+
 
 ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
            groups = Pred.Eco$Pred.Eco, labels = FALSE)
 
-
-Pred.Eco[which(!is.na(criteria3$Pred.Eco)),2] <- criteria3[which(!is.na(criteria3$Pred.Eco)),"Pred.Eco"]
-Pred.Eco[which(!is.na(criteria2$Pred.Eco)),2] <- criteria3[which(!is.na(criteria2$Pred.Eco)),"Pred.Eco"]
-
 # DFA w/ Ground -----------------------------------------------------------
 
-EcomorphData <- NewData[which(!NewData$Ground == "Mainland" & !NewData$Ground == "Unknown"),]
+EcomorphData <- NewData[which(!NewData$Ground == "M" & !NewData$Ground == "U"),]
 EcomorphData <- droplevels(EcomorphData)
 
-summary(manova(as.matrix(EcomorphData[,c(8:20)])~EcomorphData$Ground), test = "Wilks")
+summary(manova(as.matrix(EcomorphData[,c(5:17)])~EcomorphData$Ground), test = "Wilks")
 
 LDA <- lda(EcomorphData$Ground ~ ., 
-           data = EcomorphData[,c(8:20)],
+           data = EcomorphData[,c(5:17)],
            prior = c(rep(1/7, 7)), CV = FALSE) # initial LDA
 
 assessment <- predict(LDA)
@@ -245,27 +245,27 @@ EcomorphData$Species[which(!assessment$class == EcomorphData$Ground)]
 #EcomorphData$Species[which(!LDA$class == EcomorphData$Ground)]
 #LDA$class[which(!LDA$class == EcomorphData$Ground)]
 
-predictions <- predict(LDA, as.data.frame(NewData[which(NewData$Ground == "Mainland" | NewData$Ground == "Unknown"),]))
+predictions <- predict(LDA, as.data.frame(NewData[which(NewData$Ground == "M" | NewData$Ground == "U"),]))
 
 criteria.lda <- cbind(Species = rownames(predictions$x), 
-                      Ecomorph = as.character(NewData$Ground[which(NewData$Ground == "Mainland" | NewData$Ground == "Unknown")]),
-                      round(predictions$posterior,3), 
+                      Ecomorph = as.character(NewData$Ground[which(NewData$Ground == "M" | NewData$Ground == "U")]),
+                      round(predictions$posterior,2), 
                       Pred.Eco = as.character(predictions$class))
 
 #removes species with post prob <90
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp < 0.90) {
+  if (tmp > .90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
 criteria.lda.trim <- as.data.frame(criteria.lda.trim[which(!is.na(criteria.lda.trim[,"Pred.Eco"])),])
 
-tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "Mainland" | criteria.lda.trim$Ecomorph == "Unknown")],
-       criteria.lda.trim$Ecomorph[which(criteria.lda.trim$Ecomorph == "Mainland" | criteria.lda.trim$Ecomorph == "Unknown")],length)
-tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "Mainland")],
-       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "Mainland")],length)
+tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],
+       criteria.lda.trim$Ecomorph[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],length)
+tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
+       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],length)
 
 
 
@@ -277,23 +277,58 @@ predicted <- predict.class(scores = phylopca$S[,1:5], species = tree$tip.label,
                            groups = NewData$Ground)
 criteria1 <- predicted$criteria1
 criteria2 <- predicted$criteria2
-tapply(criteria2$Pred.Eco,criteria2$Pred.Eco,length)
+tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
 criteria3 <- predicted$criteria3
-tapply(criteria3$Pred.Eco,criteria3$Pred.Eco,length)
+tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
 criteria4 <- predicted$criteria4
-tapply(criteria4$Pred.Eco,criteria4$Pred.Eco,length)
+tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
+
 
 
 # Compile w/ Ground -------------------------------------------------------
 
-compile2 <- compilation(lda = criteria.lda, c1=criteria1, c2 = criteria2, 
-                        c3 = criteria3, c4 = criteria4)
-compile2[[1]]
-compile[[1]]$Species[which(is.na(match(compile[[1]]$Species, compile2[[1]]$Species)))]
+compile2 <- compilation(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9)
 
 tapply(compile2[[1]]$Predicted,compile2[[1]]$Ecomorph,length)
-tapply(compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "Mainland")],
-       compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "Mainland")],length)
+tapply(compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "M")],
+       compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "M")],length)
+
+#reconcile many of the species not classified with ground ecomorph but were previously classified
+comp.diff<-function(){
+  rownames(compile2[[1]]) <- compile2[[1]]$Species
+  
+  diff <- compile[[1]]$Species[which(is.na(match(compile[[1]]$Species, compile2[[1]]$Species)))]
+  diff <- diff[which(is.na(match(diff,EcomorphData$Species)))]
+  diff
+  
+  old <- compile[[1]][!is.na(match(compile[[1]]$Species,diff)),]; old
+  rownames(old) <- old$Species
+  new <- as.data.frame(criteria.lda[diff,]);new
+  criteria2[diff,]
+  just <- cbind(old[,c("Species","Predicted")],New.LDA = new[,"Pred.Eco"], C2.Predicted = criteria2[diff,"Pred.Eco"])
+  just["laeviventris","C2.Predicted"] <- "TC"
+  #just["cusuco","C2.Predicted"] <- "TC"
+  just
+  synth <- old[which(just$C2.Predicted == just$New.LDA & just$C2.Predicted == just$Predicted),]
+  for (i in 1:nrow(synth)) {
+    synth[i,"LDA"] <- new[synth$Species[i],synth$Predicted[i]]
+  }
+  trans <-just$Species[which(just$New.LDA == "G" & just$C2.Predicted == just$New.LDA)]
+  trans <- compile2[[2]][!is.na(match(compile2[[2]]$Species,trans)),]
+  rownames(trans) <- trans$Species
+  
+  new.compile2 <- rbind(compile2[[1]],synth,trans)
+  new.compile2 <- new.compile2[sort(rownames(new.compile2)),]
+  
+  return(new.compile2)
+}
+new.compile2 <- comp.diff()
+
+compile[[1]]$Species[which(is.na(match(compile[[1]]$Species, new.compile2$Species)))]
+
+tapply(new.compile2$Predicted,new.compile2$Ecomorph,length)
+tapply(new.compile2$Predicted[which(new.compile2$Ecomorph == "M")],
+       new.compile2$Predicted[which(new.compile2$Ecomorph == "M")],length)
 #Pred.ground <- Pred.ground[which(Pred.ground$Ecomorph == "Unknown"),]
 
 Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
@@ -304,14 +339,16 @@ Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2[[1]]$Species)),2] <- compile2[
 #Pred.Eco2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2$Pred.Eco[which(!is.na(criteria2$Pred.Eco))] #Irshick and Losos 97
 
 
-ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label, 
-           groups = Pred.Eco2$Pred.Eco, labels = TRUE)
+ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
+           groups = Pred.Eco2$Pred.Eco, labels = FALSE)
 
 
 # Randomization Tests -----------------------------------------------------
 
 Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground,as.data.frame(phylopca$S)) %>%
-  filter(., !Ecomorph == "Mainland" & !Ecomorph == "Unknown")
+  filter(., !Ecomorph == "M" & !Ecomorph == "U")
+Ecomorph.Scores <- NewData[,-c(1:2,4:7,21:22)] %>%
+  filter(., !Ground == "M" & !Ground == "U")
 
 # perform randomization
 random.dist <- function(scores, axes, group1, group2, nsim = 1000) {
@@ -382,7 +419,7 @@ posthoc.cross <- function(scores, axes, nsim = 1000, fun, p.adj = "holm") {
   dimnames(posthoc) <- dimnames(bon)
   return(list("dist" = dat, "Pf" = bon, "Pt" = posthoc))
 }
-#bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "random.dist", p.adj = "holm")
+  bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "random.dist", p.adj = "holm", nsim = 1000)
 
 # Simulated Trait Data ----------------------------------------------------
 
@@ -423,7 +460,7 @@ sim.dist <- function(tree = tree, scores, axes, group1, group2, nsim = 1000) {
 }
 
 # all ecomorph comparisons with multi comparison correction
-bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "sim.dist", p.adj = "holm")
+bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "sim.dist", p.adj = "holm", nsim = 1000)
 
 # simulate data and test compare distance to centroid and NND against null
 sim.ED <- function(tree = tree, scores, axes, nsim = 1000) {
@@ -501,7 +538,7 @@ sim.ED <- function(tree = tree, scores, axes, nsim = 1000) {
   return(Ecomorph.dist)
   
 }
-var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 5, nsim = 1000)
+var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 13, nsim = 1000)
 p.adjust(var[,4], method = "bonferroni")
 
 
@@ -509,10 +546,10 @@ p.adjust(var[,4], method = "bonferroni")
 # L1ou attempt ------------------------------------------------------------
 tree <- force.ultrametric(tree)
 lizard <- adjust_data(tree,as.matrix(phylopca$S[,1:5]))
-fit_ind_AIC <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 7, criterion = "BIC")
+fit_ind_AIC <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 7, criterion = "AICc")
 fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind_AIC,nItrs = 100, multicore = T, nCores=4)
 
-fit_conv_BIC <- estimate_convergent_regimes(fit_ind_BIC, criterion = "BIC", nCores = 7)
+fit_conv_AIC <- estimate_convergent_regimes(fit_ind_AIC, criterion = "AICc", nCores = 7)
 plot(fit_conv_AIC, show.data	= FALSE)
 
 fit_conv_AIC$shift.configuration
@@ -525,3 +562,6 @@ ew[fit_ind_AIC$shift.configuration] <- 3   # to widen edges with a shift
 plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
 
 
+# PhylogeneticEM ----------------------------------------------------------
+
+library(PhylogeneticEM)
