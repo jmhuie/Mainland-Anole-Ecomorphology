@@ -41,7 +41,6 @@ for (i in 1:nrow(PerchData)) {
 }
 
 EcoData <- left_join(EcoData,PerchData)
-#EcoData <- filter(EcoData, !is.na(Prior))
 rownames(EcoData) <- EcoData$Species
 remove(PerchData,RawPerch)
 
@@ -112,7 +111,6 @@ NewData <- NewData[,c(1:3,5:9,11:13,15,17,19,21,23)]
 NewData <- cbind(EcoData[tree$tip.label,-c(4,6,7)],NewData[tree$tip.label,-1])
 remove(tail,tail.resid,phyl.resid,MorphoData)
 
-
 # PCA ---------------------------------------------------------------------
 
 phylopca <- phyl.pca(tree, NewData[tree$tip.label,5:17], method = "BM", mode = "cov")
@@ -175,7 +173,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp > 0.90) {
+  if (tmp < 0.90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -193,7 +191,8 @@ tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
 # predict ecomorphs based on certain criteria
 
 predicted <- predict.class(scores = phylopca$S[tree$tip.label,1:5], species = tree$tip.label, 
-                           groups = setNames(NewData[tree$tip.label,"Ecomorph"],tree$tip.label))
+                           groups = setNames(NewData[tree$tip.label,"Ecomorph"],tree$tip.label),
+                           hard.mode = T, all.species = F)
 criteria1 <- predicted$criteria1
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
@@ -207,15 +206,15 @@ tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[whi
 # Compile w/Caribbean -----------------------------------------------------
 
 compile <- compilation(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9)
-compile[[1]]
-tapply(compile[[1]]$Predicted,compile[[1]]$Ecomorph,length)
-tapply(compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "M")],compile[[1]]$Predicted[which(compile[[1]]$Ecomorph == "M")],length)
+compile
+tapply(compile$Predicted,compile$Ecomorph,length)
+tapply(compile$Predicted[which(compile$Ecomorph == "M")],compile$Predicted[which(compile$Ecomorph == "M")],length)
 
 
 Pred.Eco <- data.frame(Species = NewData$Species, Region = NewData$Region, Pred.Eco = NewData$Ecomorph)
 rownames(Pred.Eco) <- Pred.Eco$Species
 #all(match(Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
-Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species)),"Pred.Eco"] <- compile[[1]]$Predicted
+Pred.Eco[!is.na(match(Pred.Eco$Species,compile$Species)),"Pred.Eco"] <- compile$Predicted
 #Pred.Eco[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] <- criteria3[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
 #Pred.Eco[criteria2[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] <- criteria2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
 #tapply(filter(Pred.Eco,Region == "Mainland")$Pred.Eco,filter(Pred.Eco,Region == "Mainland")$Pred.Eco,length) #Irshick and Losos 97
@@ -256,7 +255,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp > .90) {
+  if (tmp < .90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -274,7 +273,8 @@ tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
 # predict ecomorphs based on certain criteria
 
 predicted <- predict.class(scores = phylopca$S[,1:5], species = tree$tip.label, 
-                           groups = NewData$Ground)
+                           groups = NewData$Ground,
+                           hard.mode = T, all.species = F)
 criteria1 <- predicted$criteria1
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
@@ -287,44 +287,48 @@ tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[whi
 
 # Compile w/ Ground -------------------------------------------------------
 
-compile2 <- compilation(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9)
+compile2 <- compilation(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9,
+                        hard.mode = T)
 
-tapply(compile2[[1]]$Predicted,compile2[[1]]$Ecomorph,length)
-tapply(compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "M")],
-       compile2[[1]]$Predicted[which(compile2[[1]]$Ecomorph == "M")],length)
+tapply(compile2$Predicted,compile2$Ecomorph,length)
+tapply(compile2$Predicted[which(compile2$Ecomorph == "M")],
+       compile2$Predicted[which(compile2$Ecomorph == "M")],length)
 
 #reconcile many of the species not classified with ground ecomorph but were previously classified
 comp.diff<-function(){
-  rownames(compile2[[1]]) <- compile2[[1]]$Species
+  rownames(compile2) <- compile2$Species
   
-  diff <- compile[[1]]$Species[which(is.na(match(compile[[1]]$Species, compile2[[1]]$Species)))]
+  diff <- compile$Species[which(is.na(match(compile$Species, compile2$Species)))]
   diff <- diff[which(is.na(match(diff,EcomorphData$Species)))]
   diff
   
-  old <- compile[[1]][!is.na(match(compile[[1]]$Species,diff)),]; old
+  old <- compile[!is.na(match(compile$Species,diff)),]; old
   rownames(old) <- old$Species
   new <- as.data.frame(criteria.lda[diff,]);new
   criteria2[diff,]
   just <- cbind(old[,c("Species","Predicted")],New.LDA = new[,"Pred.Eco"], C2.Predicted = criteria2[diff,"Pred.Eco"])
-  just["laeviventris","C2.Predicted"] <- "TC"
+  #just["laeviventris","C2.Predicted"] <- "TC"
   #just["cusuco","C2.Predicted"] <- "TC"
   just
   synth <- old[which(just$C2.Predicted == just$New.LDA & just$C2.Predicted == just$Predicted),]
   for (i in 1:nrow(synth)) {
     synth[i,"LDA"] <- new[synth$Species[i],synth$Predicted[i]]
   }
+  synth <- synth[which(synth$LDA >= 0.8),]
   trans <-just$Species[which(just$New.LDA == "G" & just$C2.Predicted == just$New.LDA)]
-  trans <- compile2[[2]][!is.na(match(compile2[[2]]$Species,trans)),]
+  total <- compilation(lda = criteria.lda, predicted = predicted, hard.mode = F)
+  trans <- total[!is.na(match(total$Species,trans)),]
+  trans <- trans[which(trans$LDA >= 0.8),]
   rownames(trans) <- trans$Species
   
-  new.compile2 <- rbind(compile2[[1]],synth,trans)
-  new.compile2 <- new.compile2[sort(rownames(new.compile2)),]
+  new.compile2 <- rbind(compile2,synth,trans)
+  new.compile2 <- new.compile2[sort(new.compile2$Species),]
   
   return(new.compile2)
 }
 new.compile2 <- comp.diff()
 
-compile[[1]]$Species[which(is.na(match(compile[[1]]$Species, new.compile2$Species)))]
+compile$Species[which(is.na(match(compile$Species, compile2$Species)))]
 
 tapply(new.compile2$Predicted,new.compile2$Ecomorph,length)
 tapply(new.compile2$Predicted[which(new.compile2$Ecomorph == "M")],
@@ -334,12 +338,12 @@ tapply(new.compile2$Predicted[which(new.compile2$Ecomorph == "M")],
 Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
 rownames(Pred.Eco2) <- Pred.Eco2$Species
 #all(match(Pred.Eco[,1]!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
-Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2[[1]]$Species)),2] <- compile2[[1]]$Predicted
+Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2$Species)),2] <- compile2$Predicted
 #Pred.Eco2[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3$Pred.Eco[which(!is.na(criteria3$Pred.Eco))] #Irshick and Losos 97
 #Pred.Eco2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2$Pred.Eco[which(!is.na(criteria2$Pred.Eco))] #Irshick and Losos 97
 
 
-ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
+ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label, 
            groups = Pred.Eco2$Pred.Eco, labels = FALSE)
 
 
