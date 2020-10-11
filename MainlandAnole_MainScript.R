@@ -190,22 +190,24 @@ tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
 
 # predict ecomorphs based on certain criteria
 
-predicted <- predict.class(scores = phylopca$S[tree$tip.label,1:5], species = tree$tip.label, 
+predicted <- ED.predict(scores = phylopca$S[tree$tip.label,1:5], 
+                           species = tree$tip.label, 
                            groups = setNames(NewData[tree$tip.label,"Ecomorph"],tree$tip.label),
                            hard.mode = T, all.species = F)
 criteria1 <- predicted$criteria1
+tapply(criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],length)
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
-criteria3 <- predicted$criteria3
-tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
-criteria4 <- predicted$criteria4
-tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
+#criteria3 <- predicted$criteria3
+#tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
+#criteria4 <- predicted$criteria4
+#tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
 
 
 
 # Compile w/Caribbean -----------------------------------------------------
 
-compile <- compilation(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9)
+compile <- synth.compile(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9, hard.mode =  T)
 compile
 tapply(compile$Predicted,compile$Ecomorph,length)
 tapply(compile$Predicted[which(compile$Ecomorph == "M")],compile$Predicted[which(compile$Ecomorph == "M")],length)
@@ -272,22 +274,23 @@ tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
 
 # predict ecomorphs based on certain criteria
 
-predicted <- predict.class(scores = phylopca$S[,1:5], species = tree$tip.label, 
-                           groups = NewData$Ground,
+predicted <- ED.predict(scores = phylopca$S[,1:5], species = tree$tip.label, 
+                           groups = NewData[tree$tip.label,"Ground"],
                            hard.mode = T, all.species = F)
 criteria1 <- predicted$criteria1
+tapply(criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],length)
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
-criteria3 <- predicted$criteria3
-tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
-criteria4 <- predicted$criteria4
-tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
+#criteria3 <- predicted$criteria3
+#tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
+#criteria4 <- predicted$criteria4
+#tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
 
 
 
 # Compile w/ Ground -------------------------------------------------------
 
-compile2 <- compilation(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9,
+compile2 <- synth.compile(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9,
                         hard.mode = T)
 
 tapply(compile2$Predicted,compile2$Ecomorph,length)
@@ -296,8 +299,6 @@ tapply(compile2$Predicted[which(compile2$Ecomorph == "M")],
 
 #reconcile many of the species not classified with ground ecomorph but were previously classified
 comp.diff<-function(){
-  rownames(compile2) <- compile2$Species
-  
   diff <- compile$Species[which(is.na(match(compile$Species, compile2$Species)))]
   diff <- diff[which(is.na(match(diff,EcomorphData$Species)))]
   diff
@@ -305,20 +306,22 @@ comp.diff<-function(){
   old <- compile[!is.na(match(compile$Species,diff)),]; old
   rownames(old) <- old$Species
   new <- as.data.frame(criteria.lda[diff,]);new
-  criteria2[diff,]
-  just <- cbind(old[,c("Species","Predicted")],New.LDA = new[,"Pred.Eco"], C2.Predicted = criteria2[diff,"Pred.Eco"])
-  #just["laeviventris","C2.Predicted"] <- "TC"
-  #just["cusuco","C2.Predicted"] <- "TC"
+  criteria1[diff,]
+  just <- cbind(old[,c("Species","Predicted")],New.LDA = new[,"Pred.Eco"], C1.Predicted = criteria1[diff,"Pred.Eco"])
+  need.c1 <- ED.predict(scores = phylopca$S[,1:5], species = tree$tip.label, 
+                groups = NewData$Ground,
+                hard.mode = F, all.species = F)
+  just[which(is.na(just$C1.Predicted)),"C1.Predicted"] <- need.c1$criteria1[just[which(is.na(just$C1.Predicted)),"Species"],"Pred.Eco"]
   just
-  synth <- old[which(just$C2.Predicted == just$New.LDA & just$C2.Predicted == just$Predicted),]
+  synth <- old[which(just$C1.Predicted == just$New.LDA & just$C1.Predicted == just$Predicted),]
   for (i in 1:nrow(synth)) {
     synth[i,"LDA"] <- new[synth$Species[i],synth$Predicted[i]]
   }
-  synth <- synth[which(synth$LDA >= 0.8),]
-  trans <-just$Species[which(just$New.LDA == "G" & just$C2.Predicted == just$New.LDA)]
-  total <- compilation(lda = criteria.lda, predicted = predicted, hard.mode = F)
+  synth <- synth[which(synth$LDA >= 0.75),]
+  trans <-just$Species[which(just$New.LDA == "G" & just$C1.Predicted == just$New.LDA)]
+  total <- synth.compile(lda = criteria.lda, predicted = predicted, hard.mode = F)
   trans <- total[!is.na(match(total$Species,trans)),]
-  trans <- trans[which(trans$LDA >= 0.8),]
+  trans <- trans[which(trans$LDA >= 0.75),]
   rownames(trans) <- trans$Species
   
   new.compile2 <- rbind(compile2,synth,trans)
@@ -351,197 +354,17 @@ ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label,
 
 Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground,as.data.frame(phylopca$S)) %>%
   filter(., !Ecomorph == "M" & !Ecomorph == "U")
-Ecomorph.Scores <- NewData[,-c(1:2,4:7,21:22)] %>%
+Ecomorph.Scores <- NewData[,-c(1:2,4,18:19)] %>%
   filter(., !Ground == "M" & !Ground == "U")
 
-# perform randomization
-random.dist <- function(scores, axes, group1, group2, nsim = 1000) {
-  scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
-  group <- scores[,1]
-
-  #calculate actual centroid distance
-  group.centroids <- (aggregate(scores[,-1], list(group), mean)) # calculates centroid for each  group
-  #rownames(group.centroids) <- group.centroids[,1]
-  group.centroids <- group.centroids %>%
-    dplyr::select(., 2:ncol(group.centroids)) %>%
-    as.data.frame
-  dfa <- as.matrix(dist(group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
-  dist <- dfa[2,1] #isolate centroid dist
-  
-  #perform randomization tests and calculate centroid distances
-    dummy.dist <- c(1:nsim)
-    for (i in 1:nsim) {
-      group1.count <- tapply(scores[,1],scores[,1],length)[1] # how many species are in group 1
-      dummy.scores <- scores
-      sample <- sample(1:nrow(dummy.scores),group1.count)
-      dummy.scores[sample,1] <- group1
-      dummy.scores[is.na(match(1:nrow(scores),sample)),1] <- group2
-      
-      dummy.group <- dummy.scores[,1]
-      
-      dummy.group.centroids <- (aggregate(dummy.scores[,-1], list(dummy.group), mean)) # calculates centroid for each  group
-      dummy.group.centroids <- dummy.group.centroids %>%
-        dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
-        as.data.frame
-      dummy.dfa.table <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
-      dummy.dist[i] <- dummy.dfa.table[2,1] #isolate centroid dist
-    }
-  
-  pval <- length(which(dist < (dummy.dist)))/nsim
-
-  return(list(dist = dist, sim = dummy.dist, pval = pval))
-  
-}
-
-
-# do multiple corrections for either randomization tests or simulated test
-posthoc.cross <- function(scores, axes, nsim = 1000, fun, p.adj = "holm") {
-  bon<- matrix(NA,length(unique(scores[,1])),length(unique(scores[,1])))
-  colnames(bon) <- sort(unique(scores[,1]));rownames(bon) <- sort(unique(scores[,1]))
-  dat <- bon
-  cross <- crossing(colnames(bon),rownames(bon))
-  cross <- cross[!duplicated(t(apply(cross, 1, sort))),]
-  cross <- cross[which(!cross[,1] == cross[,2]),]
-  cross <- as.data.frame(cross)
-  
-  if (fun == "random.dist") {
-    for (i in 1:nrow(cross)){
-      dist <- random.dist(scores = scores, axes = axes, group1 = cross[i,2], group2 = cross[i,1], nsim = nsim)
-      dat[cross[i,2],cross[i,1]] <- dist$dist
-      bon[cross[i,2],cross[i,1]] <- dist$pval
-    }
-  }
-  
-  if (fun == "sim.dist") {
-    for (i in 1:nrow(cross)){
-      dist <- sim.dist(tree, scores = scores, axes = axes, group1 = cross[i,2], group2 = cross[i,1], nsim = nsim)
-      dat[cross[i,2],cross[i,1]] <- dist$dist
-      bon[cross[i,2],cross[i,1]] <- dist$pval
-    }
-  }
-  posthoc <- matrix((p.adjust(bon, method = p.adj)),ncol(bon),nrow(bon))
-  dimnames(posthoc) <- dimnames(bon)
-  return(list("dist" = dat, "Pf" = bon, "Pt" = posthoc))
-}
-  bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "random.dist", p.adj = "holm", nsim = 1000)
+bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "random.dist", p.adj = "bonferroni", nsim = 1000)
 
 # Simulated Trait Data ----------------------------------------------------
-
-#simulate data for 5 axes under BM and test differences between ecomorph centroids
-sim.dist <- function(tree = tree, scores, axes, group1, group2, nsim = 1000) {
-  scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
-  group <- scores[,1]
-  trials <- nsim
-  #calculate actual centroid distance
-  group.centroids <- (aggregate(scores[,-1], list(group), mean)) # calculates centroid for each  group
-  #rownames(group.centroids) <- group.centroids[,1]
-  group.centroids <- group.centroids %>%
-    dplyr::select(., 2:ncol(group.centroids)) %>%
-    as.data.frame
-  dfa <- as.matrix(dist(group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
-  dist <- dfa[2,1] #isolate centroid dist
-  
-  #perform centroid comparison with simulated data
-  dummy.dist <- c(1:trials)
-  for (i in 1:trials) {
-    simdata <- fastBM(tree = tree,nsim = axes) # simulate data under BM
-    simdata <- cbind(group,as.data.frame(simdata[rownames(scores),])) # prep simulated data frame
-    
-    #calculate actual centroid distance
-    dummy.group.centroids <- (aggregate(simdata[,-1], list(simdata[,1]), mean)) # calculates centroid for each group
-    #rownames(group.centroids) <- group.centroids[,1]
-    dummy.group.centroids <- dummy.group.centroids %>%
-      dplyr::select(., 2:ncol(dummy.group.centroids)) %>%
-      as.data.frame
-    dummy.dfa <- as.matrix(dist(dummy.group.centroids, method = "euclidean")) # calculates euclidean distances between centroids
-    dummy.dist[i] <- dummy.dfa[2,1] #isolate centroid dist
-  }
-  
-  pval <- length(which(dist < (dummy.dist)))/trials
-  
-  return(list(dist = dist, sim = dummy.dist, pval = pval))
-  
-}
 
 # all ecomorph comparisons with multi comparison correction
 bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "sim.dist", p.adj = "holm", nsim = 1000)
 
 # simulate data and test compare distance to centroid and NND against null
-sim.ED <- function(tree = tree, scores, axes, nsim = 1000) {
-  #scores <- scores[which(scores[,1] == group1 | scores[,1] == group2),1:(axes+1)] # trims scores matrix to include only relevant species and axes
-  scores <- scores[,1:(axes + 1)]
-  groups <- scores[,1]
-  trials <- nsim
-  #calculate actual centroid distance
-  group.centroids <- (aggregate(scores[,-1], list(groups), mean)) # calculates centroid for each  group
-  rownames(group.centroids) <- group.centroids[,1]
-  colnames(group.centroids) <- colnames(scores)
-  df <- rbind(scores,group.centroids)
-  df <- df %>%
-    dplyr::select(., 2:ncol(df)) %>%
-    as.data.frame
-  dfa <- as.matrix(dist(df, method = "euclidean")) # calculates euclidean distances between centroids
-  matrix <- cbind("Species" = rownames(dfa), 
-                  Ecomorph = c(groups,sort(unique(groups))), 
-                  as.data.frame(dfa))
-  matrix[matrix == 0] <- NA
-  rownames(matrix) <- matrix[,1]
-  colnames(matrix) <- c("Species", "Ecomorph", as.character(matrix[,1]))
-  Centroid.matrix <- dfa[1:nrow(scores),(ncol(dfa)-length(unique(groups))+1):ncol(dfa)]
-  
-  Ecomorph.dist <- matrix(NA, length(sort(unique(groups))), 4)
-  rownames(Ecomorph.dist) <- (sort(unique(groups)))
-  colnames(Ecomorph.dist) <- c("Mean Centroid Dist", "Centroid Pval","Mean NDD","NND Pval")
-  for (i in 1:nrow(Ecomorph.dist)) {
-    class <- sort(unique(groups))[i]
-    Ecomorph.dist[class,1] <- mean(Centroid.matrix[which(groups == class),class])
-    members <- rownames(Centroid.matrix)[which(groups == class)]
-    help <- as.matrix(matrix[members,members])
-    Ecomorph.dist[class,3] <- mean(apply(help, 1, FUN = mean, na.rm = TRUE)) #calculates average NND for each ecomorph
-    }
-
-  sim.centroid.dist <- matrix(NA, trials, length(sort(unique(groups)))); colnames(sim.centroid.dist) <- sort(unique(groups))
-  sim.NND.dist <- matrix(NA, trials, length(sort(unique(groups)))); colnames(sim.NND.dist) <- sort(unique(groups))
-  #perform centroid comparison with simulated data
-    for (i in 1:trials) {
-      simdata <- fastBM(tree = tree,nsim = axes) # simulate data under BM
-      simdata <- cbind("Ecomorph" = groups,as.data.frame(simdata[rownames(scores),])) # prep simulated data frame
-      
-      sim.group.centroids <- (aggregate(simdata[,-1], list(groups), mean)) # calculates centroid for each  group
-      rownames(sim.group.centroids) <- sim.group.centroids[,1]
-      colnames(sim.group.centroids) <- colnames(simdata)
-      sim.df <- rbind(simdata,sim.group.centroids)
-      sim.df <- sim.df %>%
-        dplyr::select(., 2:ncol(sim.df)) %>%
-        as.data.frame
-      sim.dfa <- as.matrix(dist(sim.df, method = "euclidean")) # calculates euclidean distances between centroids
-      sim.matrix <- cbind("Species" = rownames(sim.dfa), 
-                      "Ecomorph" = c(groups,sort(unique(groups))), 
-                      as.data.frame(sim.dfa))
-      sim.matrix[sim.matrix == 0] <- NA
-      rownames(sim.matrix) <- sim.matrix[,1]
-      #colnames(sim.matrix) <- c("Species", "Ecomorph", as.character(sim.matrix[,1]))
-      sim.Centroid.matrix <- sim.dfa[1:nrow(simdata),(ncol(sim.dfa)-length(unique(groups))+1):ncol(sim.dfa)]
-      
-      for (y in 1:ncol(sim.centroid.dist)) {
-        sim.class <- sort(unique(groups))[y]
-        sim.centroid.dist[i,sim.class] <- mean(sim.Centroid.matrix[which(groups == sim.class),sim.class])
-        members <- rownames(sim.Centroid.matrix)[which(groups == sim.class)]
-        help <- as.matrix(sim.matrix[members,members])
-        sim.NND.dist[i,sim.class] <- mean(apply(help, 1, FUN = mean, na.rm = TRUE)) #calculates average NND for each ecomorph
-      }
-    }
-    for (i in 1:nrow(Ecomorph.dist)){
-      Ecomorph.dist[i,2] <- 1 - (length(which(Ecomorph.dist[i,1] < (sim.centroid.dist[,i])))/trials)
-      Ecomorph.dist[i,4] <- 1 - (length(which(Ecomorph.dist[i,3] < (sim.NND.dist[,i])))/trials)
-    }
-  
-  
-  
-  
-  return(Ecomorph.dist)
-  
-}
 var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 13, nsim = 1000)
 p.adjust(var[,4], method = "bonferroni")
 
@@ -565,7 +388,3 @@ ew <- rep(1,nEdges)  # to set default edge width of 1
 ew[fit_ind_AIC$shift.configuration] <- 3   # to widen edges with a shift 
 plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
 
-
-# PhylogeneticEM ----------------------------------------------------------
-
-library(PhylogeneticEM)
