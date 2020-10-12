@@ -198,11 +198,8 @@ criteria1 <- predicted$criteria1
 tapply(criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],length)
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
-#criteria3 <- predicted$criteria3
-#tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
-#criteria4 <- predicted$criteria4
-#tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
-
+criteria3 <- predicted$criteria3
+tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
 
 
 # Compile w/Caribbean -----------------------------------------------------
@@ -215,15 +212,57 @@ tapply(compile$Predicted[which(compile$Ecomorph == "M")],compile$Predicted[which
 
 Pred.Eco <- data.frame(Species = NewData$Species, Region = NewData$Region, Pred.Eco = NewData$Ecomorph)
 rownames(Pred.Eco) <- Pred.Eco$Species
-#all(match(Pred.Eco[!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
 Pred.Eco[!is.na(match(Pred.Eco$Species,compile$Species)),"Pred.Eco"] <- compile$Predicted
-#Pred.Eco[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] <- criteria3[criteria3[which(!is.na(criteria3$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
-#Pred.Eco[criteria2[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] <- criteria2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],"Pred.Eco"] #Irshick and Losos 97
-#tapply(filter(Pred.Eco,Region == "Mainland")$Pred.Eco,filter(Pred.Eco,Region == "Mainland")$Pred.Eco,length) #Irshick and Losos 97
-
 
 ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
            groups = Pred.Eco$Pred.Eco, labels = FALSE)
+
+
+# Intermediate w/Caribbean ------------------------------------------------
+noclass <- as.data.frame(criteria.lda[is.na(match(criteria.lda[,1],compile[,1])),])
+intermediate <- cbind(noclass[,c("Species","Ecomorph")],"DFA"=NA,"C1"=NA,"C2"=NA,"C3"=NA,"Match" =NA)
+
+predicted <- ED.predict(scores = phylopca$S[tree$tip.label,1:5], 
+                        species = tree$tip.label, 
+                        groups = setNames(NewData[tree$tip.label,"Ecomorph"],tree$tip.label),
+                        hard.mode = F, all.species = F)
+criteria1 <- predicted$criteria1
+criteria2 <- predicted$criteria2
+criteria3 <- predicted$criteria3
+
+for (i in 1:nrow(intermediate)) {
+  species <- intermediate[i,"Species"]
+  tmp <- sort((noclass[i,4:ncol(noclass)-1]),decreasing = TRUE)
+  tmp2 <- sort((criteria1[species,4:ncol(noclass)-1]),decreasing = F)
+  tmp3 <- sort((criteria2[species,4:ncol(noclass)-1]),decreasing = F)
+  tmp4 <- sort((criteria3[species,4:ncol(noclass)-1]),decreasing = F)
+  if (as.numeric(tmp[1]) >= 0.9) {
+    intermediate$DFA[i] <- paste0(names(tmp[1]))
+    intermediate$C1[i] <- paste0(names(tmp2[1]))
+    intermediate$C2[i] <- paste0(names(tmp3[1]))
+    intermediate$C3[i] <- paste0(names(tmp4[1]))
+  }
+  if ((as.numeric(tmp[1]) + as.numeric(tmp[2])) >= 0.900 & as.numeric(tmp[1]) < 0.9) {
+    intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]))
+    intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]))
+    intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]))
+    intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]))
+  }
+  #if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
+    #intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
+    #intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
+    #intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
+    #intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
+  #}
+  match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
+  if(isTRUE(match) == TRUE) {
+    intermediate$Match[i] <- intermediate$DFA[i]
+  } else {
+    intermediate$Match[i] <- NA
+  }
+}
+intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
+intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","Match")]
 
 # DFA w/ Ground -----------------------------------------------------------
 
@@ -257,7 +296,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp < .90) {
+  if (tmp > .90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -281,11 +320,8 @@ criteria1 <- predicted$criteria1
 tapply(criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],length)
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
-#criteria3 <- predicted$criteria3
-#tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
-#criteria4 <- predicted$criteria4
-#tapply(criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],criteria4$Pred.Eco[which(criteria4$Ecomorph=="M")],length)
-
+criteria3 <- predicted$criteria3
+tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
 
 
 # Compile w/ Ground -------------------------------------------------------
@@ -296,6 +332,7 @@ compile2 <- synth.compile(lda = criteria.lda, predicted = predicted, upper.cut =
 tapply(compile2$Predicted,compile2$Ecomorph,length)
 tapply(compile2$Predicted[which(compile2$Ecomorph == "M")],
        compile2$Predicted[which(compile2$Ecomorph == "M")],length)
+compile$Species[which(is.na(match(compile$Species, compile2$Species)))]
 
 #reconcile many of the species not classified with ground ecomorph but were previously classified
 comp.diff<-function(){
@@ -331,23 +368,65 @@ comp.diff<-function(){
 }
 new.compile2 <- comp.diff()
 
-compile$Species[which(is.na(match(compile$Species, compile2$Species)))]
+compile$Species[which(is.na(match(compile$Species, new.compile2$Species)))]
 
 tapply(new.compile2$Predicted,new.compile2$Ecomorph,length)
 tapply(new.compile2$Predicted[which(new.compile2$Ecomorph == "M")],
        new.compile2$Predicted[which(new.compile2$Ecomorph == "M")],length)
-#Pred.ground <- Pred.ground[which(Pred.ground$Ecomorph == "Unknown"),]
 
 Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
 rownames(Pred.Eco2) <- Pred.Eco2$Species
-#all(match(Pred.Eco[,1]!is.na(match(Pred.Eco$Species,compile[[1]]$Species,compile[[1]]$Species))
 Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2$Species)),2] <- compile2$Predicted
-#Pred.Eco2[criteria3[which(!is.na(criteria3$Pred.Eco)),1],2] <- criteria3$Pred.Eco[which(!is.na(criteria3$Pred.Eco))] #Irshick and Losos 97
-#Pred.Eco2[criteria2[which(!is.na(criteria2$Pred.Eco)),1],2] <- criteria2$Pred.Eco[which(!is.na(criteria2$Pred.Eco))] #Irshick and Losos 97
-
 
 ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label, 
            groups = Pred.Eco2$Pred.Eco, labels = FALSE)
+
+# Intermediate w/Ground --------------------------------------------------
+noclass <- as.data.frame(criteria.lda[is.na(match(criteria.lda[,1],compile2[,1])),])
+intermediate <- cbind(noclass[,c("Species","Ecomorph")],"DFA"=NA,"C1"=NA,"C2"=NA,"C3"=NA,"Match" =NA)
+
+
+predicted <- ED.predict(scores = phylopca$S[tree$tip.label,1:5], 
+                        species = tree$tip.label, 
+                        groups = setNames(NewData[tree$tip.label,"Ground"],tree$tip.label),
+                        hard.mode = F, all.species = F)
+criteria1 <- predicted$criteria1
+criteria2 <- predicted$criteria2
+criteria3 <- predicted$criteria3
+
+for (i in 1:nrow(intermediate)) {
+  species <- intermediate[i,"Species"]
+  tmp <- sort((noclass[i,4:ncol(noclass)-1]),decreasing = TRUE)
+  tmp2 <- sort((criteria1[species,4:ncol(noclass)-1]),decreasing = F)
+  tmp3 <- sort((criteria2[species,4:ncol(noclass)-1]),decreasing = F)
+  tmp4 <- sort((criteria3[species,4:ncol(noclass)-1]),decreasing = F)
+  if (as.numeric(tmp[1]) >= 0.9) {
+    intermediate$DFA[i] <- paste0(names(tmp[1]))
+    intermediate$C1[i] <- paste0(names(tmp2[1]))
+    intermediate$C2[i] <- paste0(names(tmp3[1]))
+    intermediate$C3[i] <- paste0(names(tmp4[1]))
+  }
+  if ((as.numeric(tmp[1]) + as.numeric(tmp[2])) >= 0.900 & as.numeric(tmp[1]) < 0.9) {
+    intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]))
+    intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]))
+    intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]))
+    intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]))
+  }
+  if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
+    intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
+    intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
+    intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
+    intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
+  }
+  match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
+  if(isTRUE(match) == TRUE) {
+    intermediate$Match[i] <- intermediate$DFA[i]
+  } else {
+    intermediate$Match[i] <- NA
+  }
+}
+intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
+intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","Match")]
 
 
 # Randomization Tests -----------------------------------------------------

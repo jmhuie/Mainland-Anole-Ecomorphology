@@ -110,32 +110,38 @@ ED.predict <- function(scores, species, groups, hard.mode = T, all.species = F) 
     criteria1 <- criteria1[which(groups == "M" | groups == "U"),]
   }
   
-  # CRITERIA 2 - looks at NND distances. Must be closer to an ecomorph species than the smallest ecomorph average
-  # start with creating a matrix that resembles the output
+  # CRITERIA 2 - UNKNOWN MPD </= MAX MPD
   criteria2 <- data.frame(Species = rownames(scores))
   criteria2$Ecomorph <- groups
   criteria2 <- cbind(criteria2,round(Centroid.matrix,3))
   EcomorphSpecies <- criteria2[-which(groups == "M" | groups == "U"),1:2]
   EcomorphSpecies[,3] <- as.vector(1:nrow(EcomorphSpecies))
+  criteria3 <- criteria2
   
   # determine the mean pairwise distance for all ecomorphs
   compareMPD <-compare
+  compareNND <-compare
   for (i in 1:length(compareMPD)) {
     members <- rownames(matrix)[which(rownames(compare)[i] == matrix[,2])] 
     help <- as.matrix(matrix[members,members])
     compareMPD[i] <- max(apply(help, 1, FUN = mean, na.rm = TRUE)) #calculates average NND for each ecomorph
+    numb <- c()
+    for (y in 1:nrow(help)) {
+      numb <- c(numb,min(help[y,], na.rm = T))
+    }
+    compareNND[i] <- max(numb)
   }
   
-  # determined the NND distances for each species being classified
+  # determined the MPD distances for each species being classified
   for (i in 1:nrow(criteria2)) {
-    all.NND <- matrix[which(!matrix[,2] == "M" & !matrix[,2] == "U" & !matrix[,2] == "Centroid"),c(1:2,i+2)] 
+    all.MPD <- matrix[which(!matrix[,2] == "M" & !matrix[,2] == "U" & !matrix[,2] == "Centroid"),c(1:2,i+2)] 
     for (y in 3:length(colnames(criteria2))) {
-      MPD <- mean(all.NND[which(all.NND[,2] == colnames(criteria2)[y]),][,3],na.rm = TRUE)
+      MPD <- mean(all.MPD[which(all.MPD[,2] == colnames(criteria2)[y]),][,3],na.rm = TRUE)
       criteria2[i,y] <- round(MPD,3)
     }
   }
   
-  # determine whether the NND criteria is satisfied and the nearest ecomorph
+  # determine whether the MPD criteria is satisfied and the nearest ecomorph
   criteria2$Pred.Eco <- NA
   for (i in 1:nrow(criteria2)) {
     test <- compareMPD
@@ -160,12 +166,50 @@ ED.predict <- function(scores, species, groups, hard.mode = T, all.species = F) 
     criteria2 <- criteria2[which(criteria2[,2] == "M" | criteria2[,2] == "U"),]
   }
   
-  comb.compare <- round(cbind(compare,compareMPD),3)
-  colnames(comb.compare) <- c("Max Centroid Dist", "Max MPD")
+  
+  # CRITERIA 3 - UNKNOWN NND </= MAX NND
+  # matrix already made
+  for (i in 1:nrow(criteria3)) {
+    all.NND <- matrix[which(!matrix[,2] == "M" & !matrix[,2] == "U" & !matrix[,2] == "Centroid"),c(1:2,i+2)] 
+    for (y in 3:length(colnames(criteria3))) {
+      NND <- min(all.NND[which(all.NND[,2] == colnames(criteria3)[y]),][,3],na.rm = TRUE)
+      criteria3[i,y] <- round(NND,3)
+    }
+  }
+  
+  # determine whether the NND criteria is satisfied and the nearest ecomorph
+  criteria3$Pred.Eco <- NA
+  for (i in 1:nrow(criteria3)) {
+    test <- compareNND
+    for (y in 1:nrow(compareNND)) {
+      test[y] <- isTRUE(criteria3[i,2+y] <= compareNND[y])
+    }
+    
+    if (hard.mode == T){
+      criteria3[i,rownames(compareNND)][which(test < 1)] <- NA
+      min <- names(which.min(criteria3[i,rownames(compareNND)][which(test == 1)]))
+      if (!is.null(min)) {
+        criteria3$Pred.Eco[i] <- min
+      }
+    } else {
+      criteria3$Pred.Eco[i] <- names(which.min(criteria3[i,rownames(compareNND)]))
+    }
+  }
+  
+  # naturally subsets out the a priori ecomorph species 
+  if (all.species == TRUE) {
+  } else {
+    criteria3 <- criteria3[which(criteria3[,2] == "M" | criteria3[,2] == "U"),]
+  }
+  
+  
+  comb.compare <- round(cbind(compare,compareMPD, compareNND),3)
+  colnames(comb.compare) <- c("Max CD", "Max MPD", "Max NND")
   print(comb.compare)
   
   return(list(criteria1 = criteria1, 
               criteria2 = criteria2,
+              criteria3 = criteria3,
               compare = comb.compare))
 }
 
@@ -178,6 +222,7 @@ synth.compile <- function(lda = criteria.lda, predicted, hard.mode = T, upper.cu
   compare <- predicted$compare 
   criteria1 <- predicted$criteria1
   criteria2 <- predicted$criteria2
+  criteria3 <- predicted$criteria3
   
   for (i in 1:nrow(criteria.lda)) {
     temp.species <- criteria.lda[i,1] #reads species name
@@ -215,19 +260,28 @@ synth.compile <- function(lda = criteria.lda, predicted, hard.mode = T, upper.cu
       temp.pairwise <- 0
     }
     
+    c3.val <- criteria3[which(criteria3$Species == temp.species),temp.predicted]
+    if (!is.na(c3.val) == TRUE){
+      temp.neighbor <- 1
+    } else {
+      temp.neighbor <- 0
+    }
+    
+    temp.total <- temp.centroid + temp.pairwise + temp.neighbor
+    
     temp.final <- data.frame(temp.species,temp.region,temp.predicted,lda,c1.val,c2.val)
     # if LDA post prob > 0.95 and it satisfies any of the criteria then it gets added to matrix
-    if (temp.lda == 1 & (temp.centroid + temp.pairwise) >= 1){
+    if (temp.lda == 1 & temp.total >= 1){
       compilation <- rbind(compilation,temp.final)
     } 
-    if (temp.lda == 1 & (temp.centroid + temp.pairwise) < 1){
+    if (temp.lda == 1 & temp.total < 1){
       other <- rbind(other,temp.final)
     }
     # if LDA post prob <0.95 and >0.9 and it satisfies at least one centroid and one neighbor criteria then it gets added to matrix
-    if (temp.lda == 2 & (temp.centroid + temp.pairwise) >= 2){
+    if (temp.lda == 2 & temp.total >= 2){
       compilation <- rbind(compilation,temp.final)
     } 
-    if (temp.lda == 2 & (temp.centroid + temp.pairwise) < 2){
+    if (temp.lda == 2 & temp.total < 2){
       other <- rbind(other,temp.final)
     }
     #if LDA post prob <0.9 and it satisfies at least one centroid and one neighbor criteria then it gets added to matrix
@@ -363,7 +417,12 @@ predict.class <- function(scores, species, groups, hard.mode = T, all.species = 
     for (i in 1:length(compareNND)) {
       members <- rownames(matrix)[which(rownames(compare)[i] == matrix[,2])] 
       help <- as.matrix(matrix[members,members])
-      compareNND[i] <- mean(apply(help, 1, FUN = mean, na.rm = TRUE))
+      numb <- c()
+      for ( y in 1:nrow(help)) {
+        numb <- c(numb,min(help[y,], na.rm = TRUE))
+      }
+      compareNND[i] <- max(numb)
+      #compareNND[i] <- mean(apply(help, 1, FUN = min, na.rm = TRUE))
       compareNND.max[i] <- max(apply(help, 1, FUN = mean, na.rm = TRUE)) #calculates average NND for each ecomorph
     }
     
@@ -373,7 +432,7 @@ predict.class <- function(scores, species, groups, hard.mode = T, all.species = 
       for (y in 3:length(colnames(criteria3))) {
         NND <- min(all.NND[which(all.NND[,2] == colnames(criteria3)[y]),][,3],na.rm = TRUE)
         MPD <- mean(all.NND[which(all.NND[,2] == colnames(criteria3)[y]),][,3],na.rm = TRUE)
-        criteria3[i,y] <- round(NND,3)
+        criteria3[i,y] <- round(MPD,3)
       }
     }
     
@@ -382,7 +441,7 @@ predict.class <- function(scores, species, groups, hard.mode = T, all.species = 
     for (i in 1:nrow(criteria3)) {
       test <- compareNND
       for (y in 1:nrow(compareNND)) {
-        test[y] <- isTRUE(criteria3[i,2+y] <= min(compareNND[y]))
+        test[y] <- isTRUE(criteria3[i,2+y] <= min(compareNND.max[y]))
       }
       
       if (hard.mode == T){
@@ -410,7 +469,7 @@ predict.class <- function(scores, species, groups, hard.mode = T, all.species = 
       for (y in 3:length(colnames(criteria4))) {
         NND <- min(all.NND[which(all.NND[,2] == colnames(criteria4)[y]),][,3],na.rm = TRUE)
         MPD <- mean(all.NND[which(all.NND[,2] == colnames(criteria4)[y]),][,3],na.rm = TRUE)
-        criteria4[i,y] <- round(MPD,3)
+        criteria4[i,y] <- round(NND,3)
       }
     }
     
@@ -477,8 +536,11 @@ compilation <- function(lda = criteria.lda, predicted, upper.cut = 0.95, lower.c
       if (lda >= lower.cut & lda < upper.cut) {
         temp.lda <- 2
       } 
-      if (lda < lower.cut){
+      if (lda < 0.85){
         temp.lda <- 3
+      }
+      if (lda >= 0.85 & lda < 0.9){
+        temp.lda <- 4
       }
     }
     
@@ -528,13 +590,18 @@ compilation <- function(lda = criteria.lda, predicted, upper.cut = 0.95, lower.c
       temp.neighbor <- 0
     }
     
+    temp.total <- temp.c2 +temp.c3+temp.c4
+    
     temp.final <- data.frame(temp.species,temp.region,temp.predicted,lda,temp.c1,c2.val,c3.val,c4.val)
     # if LDA post prob > 0.95 and it satisfies any of the criteria then it gets added to matrix
-    if (temp.lda == 1 & (temp.centroid + temp.neighbor) >= 1){
+    if (temp.lda == 1 & temp.total >= 1){
       compilation <- rbind(compilation,temp.final)
     }
     # if LDA post prob <0.95 and >0.9 and it satisfies at least one centroid and one neighbor criteria then it gets added to matrix
-    if (temp.lda == 2 & (temp.centroid + temp.neighbor) >= 2){
+    if (temp.lda == 2 & temp.total >= 2){
+      compilation <- rbind(compilation,temp.final)
+    }
+    if (temp.lda == 4 & temp.total >= 3){
       compilation <- rbind(compilation,temp.final)
     }
     #if LDA post prob <0.9 and it satisfies at least one centroid and one neighbor criteria then it gets added to matrix
