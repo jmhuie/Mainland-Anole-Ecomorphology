@@ -204,7 +204,7 @@ tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[whi
 
 # Compile w/Caribbean -----------------------------------------------------
 
-compile <- synth.compile(lda = criteria.lda, predicted = predicted, upper.cut = 0.95, lower.cut = 0.9, hard.mode =  T)
+compile <- synth.compile(lda = criteria.lda, predicted = predicted, hard.mode =  T,)
 compile
 tapply(compile$Predicted,compile$Ecomorph,length)
 tapply(compile$Predicted[which(compile$Ecomorph == "M")],compile$Predicted[which(compile$Ecomorph == "M")],length)
@@ -225,7 +225,7 @@ intermediate <- cbind(noclass[,c("Species","Ecomorph")],"DFA"=NA,"C1"=NA,"C2"=NA
 predicted <- ED.predict(scores = phylopca$S[tree$tip.label,1:5], 
                         species = tree$tip.label, 
                         groups = setNames(NewData[tree$tip.label,"Ecomorph"],tree$tip.label),
-                        hard.mode = F, all.species = F)
+                        hard.mode = T, all.species = F)
 criteria1 <- predicted$criteria1
 criteria2 <- predicted$criteria2
 criteria3 <- predicted$criteria3
@@ -238,15 +238,30 @@ for (i in 1:nrow(intermediate)) {
   tmp4 <- sort((criteria3[species,4:ncol(noclass)-1]),decreasing = F)
   if (as.numeric(tmp[1]) >= 0.9) {
     intermediate$DFA[i] <- paste0(names(tmp[1]))
-    intermediate$C1[i] <- paste0(names(tmp2[1]))
-    intermediate$C2[i] <- paste0(names(tmp3[1]))
-    intermediate$C3[i] <- paste0(names(tmp4[1]))
+  #  intermediate$C1[i] <- paste0(names(tmp2[1]))
+  #  intermediate$C2[i] <- paste0(names(tmp3[1]))
+  #  intermediate$C3[i] <- paste0(names(tmp4[1]))
   }
   if ((as.numeric(tmp[1]) + as.numeric(tmp[2])) >= 0.900 & as.numeric(tmp[1]) < 0.9) {
     intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]))
-    intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]))
-    intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]))
-    intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]))
+    if (length(tmp2) >=2){
+      intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]))
+    }
+    if (length(tmp2) ==1){
+      intermediate$C1[i] <- paste0(names(tmp2[1]))
+    }
+    if (length(tmp3) >=2){
+      intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]))
+    }
+    if (length(tmp3) ==1){
+      intermediate$C2[i] <- paste0(names(tmp3[1]))
+    }
+    if (length(tmp4) >=2){
+      intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]))
+    }
+    if (length(tmp4) ==1){
+      intermediate$C3[i] <- paste0(names(tmp4[1]))
+    }
   }
   #if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
     #intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
@@ -254,7 +269,7 @@ for (i in 1:nrow(intermediate)) {
     #intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
     #intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
   #}
-  match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
+  match <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
   if(isTRUE(match) == TRUE) {
     intermediate$Match[i] <- intermediate$DFA[i]
   } else {
@@ -382,7 +397,7 @@ ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label,
            groups = Pred.Eco2$Pred.Eco, labels = FALSE)
 
 # Intermediate w/Ground --------------------------------------------------
-noclass <- as.data.frame(criteria.lda[is.na(match(criteria.lda[,1],compile2[,1])),])
+noclass <- as.data.frame(criteria.lda[is.na(match(criteria.lda[,1],new.compile2[,1])),])
 intermediate <- cbind(noclass[,c("Species","Ecomorph")],"DFA"=NA,"C1"=NA,"C2"=NA,"C3"=NA,"Match" =NA)
 
 
@@ -402,22 +417,37 @@ for (i in 1:nrow(intermediate)) {
   tmp4 <- sort((criteria3[species,4:ncol(noclass)-1]),decreasing = F)
   if (as.numeric(tmp[1]) >= 0.9) {
     intermediate$DFA[i] <- paste0(names(tmp[1]))
-    intermediate$C1[i] <- paste0(names(tmp2[1]))
-    intermediate$C2[i] <- paste0(names(tmp3[1]))
-    intermediate$C3[i] <- paste0(names(tmp4[1]))
+    #  intermediate$C1[i] <- paste0(names(tmp2[1]))
+    #  intermediate$C2[i] <- paste0(names(tmp3[1]))
+    #  intermediate$C3[i] <- paste0(names(tmp4[1]))
   }
   if ((as.numeric(tmp[1]) + as.numeric(tmp[2])) >= 0.900 & as.numeric(tmp[1]) < 0.9) {
     intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]))
-    intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]))
-    intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]))
-    intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]))
+    if (length(tmp2) >=2){
+      intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]))
+    }
+    if (length(tmp2) ==1){
+      intermediate$C1[i] <- paste0(names(tmp2[1]))
+    }
+    if (length(tmp3) >=2){
+      intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]))
+    }
+    if (length(tmp3) ==1){
+      intermediate$C2[i] <- paste0(names(tmp3[1]))
+    }
+    if (length(tmp4) >=2){
+      intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]))
+    }
+    if (length(tmp4) ==1){
+      intermediate$C3[i] <- paste0(names(tmp4[1]))
+    }
   }
-  if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
-    intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
-    intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
-    intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
-    intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
-  }
+  #if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
+  #intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
+  #intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
+  #intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
+  #intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
+  #}
   match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
   if(isTRUE(match) == TRUE) {
     intermediate$Match[i] <- intermediate$DFA[i]
@@ -427,6 +457,7 @@ for (i in 1:nrow(intermediate)) {
 }
 intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
 intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","Match")]
+intermediate[is.na(match(intermediate$Species,new.compile2$Species)),]
 
 
 # Randomization Tests -----------------------------------------------------
@@ -447,6 +478,44 @@ bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "sim.dist", p.adj = "holm
 var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 13, nsim = 1000)
 p.adjust(var[,4], method = "bonferroni")
 
+
+# SIMMAP Analyses w/Caribbean  --------------------------------------------
+
+simmap.eco <- setNames(NewData$Ecomorph,NewData$Species)
+simmap.eco[which(simmap.eco == "M")] <- "U"
+simmap.eco[compile$Species] <- compile$Predicted
+simeco.col <- setNames(c("Blue", "Gold",  "ForestGreen", "tan4","Red", "Purple4","grey73"),sort(unique(simmap.eco)))
+simmap.eco<-to.matrix(simmap.eco,levels(as.factor(simmap.eco)))
+
+for (i in 1:nrow(intermediate)) {
+  #split <- str_split(intermediate[i,"Match"], "/")
+  #simmap.eco[intermediate$Species[i],c(split)[[1]]] <- 0.5
+  simmap.eco[intermediate$Species[i],-ncol(simmap.eco)] <- as.numeric(criteria.lda[intermediate$Species[i],3:(ncol(criteria.lda)-1)])
+  simmap.eco[intermediate$Species[i],"U"] <- 0
+}
+# ER -276.4185 df 1
+#> SYM -244.3273 df 21
+#> ER vs SYM LR 64.1824 df 20 
+#-2*(-276.4185 - (-244.3273))
+#quantile(rchisq(10000, 20),.95) #SYM IS BETTER!!!! YAY
+# ARD -235.6913 df 42
+# SYM vs ARD LR 17.272 df 21
+#-2*(-244.3273 - (-235.6913))
+#quantile(rchisq(10000, 21),.95) #ARD IS NOT BETTER!!!! GO FOR SYM
+
+simmap<-make.simmap(tree,simmap.eco,model = "SYM",nsim = 1)
+simmap.trim <- lapply(simmap,drop.tip.simmap,NewData$Species[which(!NewData$Region == "Mainland")])
+class(simmap.trim) <- "multiPhylo"
+mainland.tree <- drop.tip(tree, setdiff(tree$tip.label,NewData$Species[which(NewData$Region == "Mainland")]))
+pd<-describe.simmap(simmap.trim[[1]], plot = FALSE, ref.tree = mainland.tree)
+plot(simmap.trim, fsize = 0.5, col = simeco.col)
+nodelabels(pie=pd$ace,piecol = simeco.col,cex=.4)
+tiplabels(pie=simmap.eco[simmap.trim[[1]]$tip.label,],piecol = simeco.col,cex=0.2)
+
+transitions <- pd$count
+transition.type <- (",TG$")
+tapply(apply(transitions[,grep(transition.type, colnames(transitions))],1,sum),
+       apply(transitions[,grep(transition.type, colnames(transitions))],1,sum),length)
 
 
 # L1ou attempt ------------------------------------------------------------
