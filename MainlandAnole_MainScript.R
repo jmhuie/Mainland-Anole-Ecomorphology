@@ -108,12 +108,12 @@ phyl.resid <- phyl.resid(tree, x = setNames(NewData$SVL,NewData$Species), Y = Ne
 NewData[,3] <-tail.resid$resid
 NewData[,4:19]<-phyl.resid$resid
 NewData <- NewData[,c(1:3,5:9,11:13,15,17,19,21,23)]
-NewData <- cbind(EcoData[tree$tip.label,-c(4,6,7)],NewData[tree$tip.label,-1])
+NewData <- cbind(EcoData[tree$tip.label,-c(4,7:8)],NewData[tree$tip.label,-1])
 remove(tail,tail.resid,phyl.resid,MorphoData)
 
 # PCA ---------------------------------------------------------------------
 
-phylopca <- phyl.pca(tree, NewData[tree$tip.label,5:17], method = "BM", mode = "cov")
+phylopca <- phyl.pca(tree, NewData[tree$tip.label,6:18], method = "BM", mode = "cov")
 phylopca$L
 plot.phyl.pca(phylopca, type = "lines")
 
@@ -147,10 +147,10 @@ ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species,
 EcomorphData <- NewData[which(!NewData$Ecomorph == "M" & !NewData$Ecomorph == "U"),]
 EcomorphData <- droplevels(EcomorphData)
 
-summary(manova(as.matrix(EcomorphData[,c(5:17)])~EcomorphData$Ecomorph), test = "Wilks")
+summary(manova(as.matrix(EcomorphData[,c(6:18)])~EcomorphData$Ecomorph), test = "Wilks")
 
 LDA <- lda(EcomorphData$Ecomorph ~ ., 
-           data = EcomorphData[,c(5:17)],
+           data = EcomorphData[,c(6:18)],
            prior = c(rep(1/6, 6)), CV = FALSE) # initial LDA
 
 assessment <- predict(LDA)
@@ -225,7 +225,7 @@ intermediate <- cbind(noclass[,c("Species","Ecomorph")],"DFA"=NA,"C1"=NA,"C2"=NA
 predicted <- ED.predict(scores = phylopca$S[tree$tip.label,1:5], 
                         species = tree$tip.label, 
                         groups = setNames(NewData[tree$tip.label,"Ecomorph"],tree$tip.label),
-                        hard.mode = T, all.species = F)
+                        hard.mode = F, all.species = F)
 criteria1 <- predicted$criteria1
 criteria2 <- predicted$criteria2
 criteria3 <- predicted$criteria3
@@ -236,12 +236,12 @@ for (i in 1:nrow(intermediate)) {
   tmp2 <- sort((criteria1[species,4:ncol(noclass)-1]),decreasing = F)
   tmp3 <- sort((criteria2[species,4:ncol(noclass)-1]),decreasing = F)
   tmp4 <- sort((criteria3[species,4:ncol(noclass)-1]),decreasing = F)
-  if (as.numeric(tmp[1]) >= 0.9) {
-    intermediate$DFA[i] <- paste0(names(tmp[1]))
-  #  intermediate$C1[i] <- paste0(names(tmp2[1]))
-  #  intermediate$C2[i] <- paste0(names(tmp3[1]))
-  #  intermediate$C3[i] <- paste0(names(tmp4[1]))
-  }
+  #if (as.numeric(tmp[1]) >= 0.9) {
+    #intermediate$DFA[i] <- paste0(names(tmp[1]))
+    #  intermediate$C1[i] <- paste0(names(tmp2[1]))
+    #  intermediate$C2[i] <- paste0(names(tmp3[1]))
+    #  intermediate$C3[i] <- paste0(names(tmp4[1]))
+  #}
   if ((as.numeric(tmp[1]) + as.numeric(tmp[2])) >= 0.900 & as.numeric(tmp[1]) < 0.9) {
     intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]))
     if (length(tmp2) >=2){
@@ -263,31 +263,33 @@ for (i in 1:nrow(intermediate)) {
       intermediate$C3[i] <- paste0(names(tmp4[1]))
     }
   }
-  #if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
-    #intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
-    #intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
-    #intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
-    #intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
-  #}
-  match <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
-  if(isTRUE(match) == TRUE) {
+  if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
+  intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
+  intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
+  intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
+  intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
+  }
+  match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
+  match2 <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[6]]))
+  if(isTRUE(match) == TRUE & isTRUE(match2) == TRUE) {
     intermediate$Match[i] <- intermediate$DFA[i]
   } else {
     intermediate$Match[i] <- NA
   }
 }
 intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
-intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","Match")]
+intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C3","Match")]
+intermediate
 
 # DFA w/ Ground -----------------------------------------------------------
 
 EcomorphData <- NewData[which(!NewData$Ground == "M" & !NewData$Ground == "U"),]
 EcomorphData <- droplevels(EcomorphData)
 
-summary(manova(as.matrix(EcomorphData[,c(5:17)])~EcomorphData$Ground), test = "Wilks")
+summary(manova(as.matrix(EcomorphData[,c(6:18)])~EcomorphData$Ground), test = "Wilks")
 
 LDA <- lda(EcomorphData$Ground ~ ., 
-           data = EcomorphData[,c(5:17)],
+           data = EcomorphData[,c(6:18)],
            prior = c(rep(1/7, 7)), CV = FALSE) # initial LDA
 
 assessment <- predict(LDA)
@@ -449,14 +451,15 @@ for (i in 1:nrow(intermediate)) {
   #intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
   #}
   match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
-  if(isTRUE(match) == TRUE) {
+  match2 <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[6]]))
+  if(isTRUE(match) == TRUE & isTRUE(match2) == TRUE) {
     intermediate$Match[i] <- intermediate$DFA[i]
   } else {
     intermediate$Match[i] <- NA
   }
 }
 intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
-intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","Match")]
+intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C3","Match")]
 intermediate[is.na(match(intermediate$Species,new.compile2$Species)),]
 
 
@@ -464,15 +467,78 @@ intermediate[is.na(match(intermediate$Species,new.compile2$Species)),]
 
 Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground,as.data.frame(phylopca$S)) %>%
   filter(., !Ecomorph == "M" & !Ecomorph == "U")
-Ecomorph.Scores <- NewData[,-c(1:2,4,18:19)] %>%
-  filter(., !Ground == "M" & !Ground == "U")
+#Ecomorph.Scores <- NewData[,-c(1:2,4,18:19)] %>%
+#  filter(., !Ground == "M" & !Ground == "U")
 
-bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "random.dist", p.adj = "bonferroni", nsim = 1000)
+bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "random.dist", p.adj = "bonferroni", nsim = 1000)
+
+
+
+
+
+# Caribbean vs Mainland Sim -----------------------------------------------
+
+FiveIsland <- NewData %>%
+  filter(Country == "DR" | Country == "Haiti" | Country == "Puerto Rico" | 
+           Country == "Cuba" | Country == "Jamaica"| Region ==  "Mainland")
+FiveIsland <- cbind(FiveIsland[,1:5], phylopca$S[rownames(FiveIsland),])
+FiveIsland <- FiveIsland[c(FiveIsland$Species[which(FiveIsland$Region == "Caribbean" | FiveIsland$Ground == "G")],
+             NewData[!is.na(match(NewData$Species,new.compile2$Species)) & NewData$Region == "Mainland","Species"]),]
+
+
+euc <- as.matrix(dist(FiveIsland[,6:10], method = "euclidean"))
+MainNND <- data.frame(Species = as.character(rownames(euc)), NND.Species = NA, NND = NA)
+for (i in 1:nrow(euc)) {
+  MainNND[i,"NND.Species"] <- names(sort(euc[i,which(!FiveIsland$Region == "Mainland")])[2])
+  MainNND[i,"NND"] <- sort(euc[i,which(!FiveIsland$Region == "Mainland")])[2]
+}
+rownames(MainNND) <- MainNND$Species
+meanMain<- round(mean(MainNND[which(FiveIsland$Region == "Mainland"),"NND"]),3)
+meanMain
+
+CarNND <- data.frame(Species = as.character(rownames(euc)), NND.Species = NA, NND = NA)
+for (i in 1:nrow(euc)) {
+  CarNND[i,"NND.Species"] <- names(sort(euc[i,which(!FiveIsland$Region == "Caribbean")])[2])
+  CarNND[i,"NND"] <- sort(euc[i,which(!FiveIsland$Region == "Caribbean")])[2]
+}
+rownames(CarNND) <- CarNND$Species
+meanCar <- round(mean(CarNND[which(FiveIsland$Region == "Caribbean"),"NND"]),3)
+meanCar
+
+meanTotal<-mean(meanMain,meanCar)
+
+sim.val <-matrix(NA,100,1)
+sim.val2 <-sim.val
+totalsim <- sim.val
+for(y in 1:nrow(sim.val)) {
+  simdata <- fastBM(tree,nsim = 5) # simulate data under BM
+  sim.euc <- as.matrix(dist(simdata[FiveIsland$Species,], method = "euclidean"))
+  simNND <- data.frame(Species = as.character(rownames(sim.euc)), NND = NA)
+  for (i in 1:nrow(sim.euc)) {
+    simNND[i,"NND"] <- sim.euc[i,MainNND$NND.Species[i]]
+  }
+  sim.val[y] <- round(mean(simNND[which(FiveIsland$Region == "Mainland"),"NND"]),3)
+  
+  simNND2 <- data.frame(Species = as.character(rownames(sim.euc)), NND = NA)
+  for (i in 1:nrow(sim.euc)) {
+    simNND2[i,"NND"] <- sim.euc[i,CarNND$NND.Species[i]]
+  }
+  sim.val2[y] <- round(mean(simNND2[which(FiveIsland$Region == "Caribbean"),"NND"]),3)
+  totalsim[y] <- mean(sim.val[y], sim.val2[y])
+}
+quantile(totalsim,.05)
+
+hist(c(totalsim,meanTotal))
+abline(v = meanTotal, col = "red", lwd = 2)
+
+#RESULTS - it really matters whether you compare a species to the same species or a random one.
+# Former is super sig but the later is really not sig
+# I think former is correct 
 
 # Simulated Trait Data ----------------------------------------------------
 
 # all ecomorph comparisons with multi comparison correction
-bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "sim.dist", p.adj = "holm", nsim = 1000)
+bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "sim.dist", p.adj = "bonferroni", nsim = 1000)
 
 # simulate data and test compare distance to centroid and NND against null
 var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 13, nsim = 1000)
