@@ -9,52 +9,25 @@ library(plyr)
 library(ggpubr)
 library(MASS)
 library(geiger)
+library(l1ou)
 
 
-# Perch Data --------------------------------------------------------
+# Read Tree ---------------------------------------------------------------
 
+#read in species list with ecomorph and region assignments
 EcoData <- read_excel("Data/MainlandAnole_SpeciesList.xlsx")%>%
   as.data.frame
 rownames(EcoData) <- EcoData$Species 
 EcoData <- EcoData[sort(EcoData$Species),]
 
-RawPerch <- read_excel("Data/MainlandAnole_EcoData.xlsx") %>%
-  filter(., Quality == "S" | Quality == "AS" ) %>%
-  dplyr::select(.,Species,'Height N','Perch Height (m)','Diameter N', 'Perch Diameter (cm)') %>%
-  as.data.frame
-colnames(RawPerch) <- c("Species", "PH.N", "PH", "PD.N", "PD")
-RawPerch[is.na(RawPerch)] <- 1
-PerchData <- matrix(nrow =length(unique(RawPerch$Species)), ncol = 3) %>% as.data.frame
-colnames(PerchData) <- c("Species", "PH", "PD")
-PerchData[,1] <- unique(RawPerch$Species)
-
-for (i in 1:nrow(PerchData)) {
-  species <- as.character(PerchData[i,1])
-  PerchData[i,2] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PH"])),
-                                  w = as.numeric(unlist(as.numeric(filter(RawPerch, Species == species)[,"PH.N"])/
-                                  sum(as.numeric(filter(RawPerch, Species == species)[,"PH.N"]))))),2) 
-                
-  PerchData[i,3] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PD"])),
-                                  w = as.numeric(unlist(as.numeric(filter(RawPerch, Species == species)[,"PD.N"])/
-                                  sum(as.numeric(filter(RawPerch, Species == species)[,"PD.N"]))))),2)
-  remove(species)
-}
-
-EcoData <- left_join(EcoData,PerchData)
-rownames(EcoData) <- EcoData$Species
-remove(PerchData,RawPerch)
-
-#plot(EcoData$PH~EcoData$PD, col = col[EcoData$Ground], pch = 19, cex = 1)
-#text(EcoData$PH~EcoData$PD, col = col[EcoData$Ground], label = EcoData$Species)
-
-# Read Tree ---------------------------------------------------------------
-
 tree <- read.nexus("Trees/Poe_2017_MCC_names.txt")
 #tree <- read.nexus("Trees/Poe_2017_Time_names.tre")
 tree <- ladderize(tree, right = FALSE)
 tree <- drop.tip(tree, setdiff(tree$tip.label, unique(EcoData$Species))) #keeps tip labels that matches vector
-plotTree(tree, size = .5) # plot tree. looks pretty ultrametric but R doesn't think so
-tree <- force.ultrametric(tree) # forces tree to be ultrametric
+plotTree(tree,  fsize =0.5) # plot tree. looks pretty ultrametric but R doesn't think so
+if (is.ultrametric(tree) == FALSE) {
+  tree <- force.ultrametric(tree) # forces tree to be ultrametric
+}
 dev.off()
 
 # Morphology Data Cleaning ------------------------------------------------
@@ -141,6 +114,147 @@ ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species,
 #dev.off()
 
 
+# Species for Species Matching --------------------------------------------
+
+FiveIsland <- NewData %>%
+  filter(Country == "DR" | Country == "Haiti" | Country == "Puerto Rico" | 
+           Country == "Cuba" | Country == "Jamaica"| Region ==  "Mainland")
+FiveIsland <- cbind(FiveIsland[,1:5], phylopca$S[rownames(FiveIsland),])
+FiveIsland[which(FiveIsland$Country == "DR" | FiveIsland$Country == "Haiti"),"Country"] <- "Hispaniola"
+FiveIsland[which(FiveIsland$Region == "Caribbean"),"Region"] <- FiveIsland[which(FiveIsland$Region == "Caribbean"),"Country"]
+
+euc <- as.matrix(dist(FiveIsland[,6:10], method = "euclidean"))
+euc[which(euc == 0)] <- NA
+MainNND <- data.frame(FiveIsland[,c(1,4)], 
+                      Cuba.NND = NA,
+                      Jam.NND = NA,
+                      Hisp.NND = NA,
+                      PR.NND = NA,
+                      Main.NND = NA)
+for (i in 1:nrow(MainNND)) {
+  MainNND[i,"Cuba.NND"] <- min(euc[i,which(FiveIsland$Region == "Cuba")],na.rm = T)
+  MainNND[i,"Jam.NND"] <- min(euc[i,which(FiveIsland$Region == "Jamaica")],na.rm = T)
+  MainNND[i,"Hisp.NND"] <- min(euc[i,which(FiveIsland$Region == "Hispaniola")],na.rm = T)
+  MainNND[i,"PR.NND"] <- min(euc[i,which(FiveIsland$Region == "Puerto Rico")],na.rm = T)
+  MainNND[i,"Main.NND"] <- min(euc[i,which(FiveIsland$Region == "Mainland")],na.rm = T)
+}
+Cuba <- mean(unlist(MainNND[which(MainNND$Region == "Cuba"),c(4,5,6,7)]))
+Jam <- mean(unlist(MainNND[which(MainNND$Region == "Jamaica"),c(3,5,6,7)]))
+Hisp <- mean(unlist(MainNND[which(MainNND$Region == "Hispaniola"),c(3,4,6,7)]))
+PR <- mean(unlist(MainNND[which(MainNND$Region == "Puerto Rico"),c(3,4,5,7)]))
+Main <- mean(unlist(MainNND[which(MainNND$Region == "Mainland"),c(3,4,5,6)]))
+totalmean <- mean(c(Cuba,Jam,Hisp,PR,Main))
+totalmean
+
+totalsim <-matrix(NA,100,1)
+fit1 <- fitContinuous(tree,setNames(phylopca$S[,1],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit2 <- fitContinuous(tree,setNames(phylopca$S[,2],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit3 <- fitContinuous(tree,setNames(phylopca$S[,3],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit4 <- fitContinuous(tree,setNames(phylopca$S[,4],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit5 <- fitContinuous(tree,setNames(phylopca$S[,5],rownames(phylopca$S))[tree$tip.label],model = "BM")
+for(y in 1:nrow(totalsim)) {
+  simNND <- data.frame(FiveIsland[,c(1,4)], 
+                       Cuba.NND = NA,
+                       Jam.NND = NA,
+                       Hisp.NND = NA,
+                       PR.NND = NA,
+                       Main.NND = NA)
+  simdata <- cbind(fastBM(tree, sig2 = fit1$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit2$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit3$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit4$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit5$opt$sigsq, nsim = 1)) # simulate data under BM
+  sim.euc <- as.matrix(dist(simdata[FiveIsland$Species,], method = "euclidean"))
+  sim.euc[which(sim.euc == 0)] <- NA
+  for (i in 1:nrow(sim.euc)) {
+    simNND[i,"Cuba.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Cuba")], na.rm = T)
+    simNND[i,"Jam.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Jamaica")], na.rm = T)
+    simNND[i,"Hisp.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Hispaniola")], na.rm = T)
+    simNND[i,"PR.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Puerto Rico")], na.rm = T)
+    simNND[i,"Main.NND"] <- min(sim.euc[i,which(FiveIsland$Region ==  "Mainland")], na.rm = T)
+  }
+  simCuba <- mean(unlist(simNND[which(simNND$Region == "Cuba"), c(4,5,6,7)]))
+  simJam <- mean(unlist(simNND[which(simNND$Region == "Jamaica"), c(3,5,6,7)]))
+  simHisp <- mean(unlist(simNND[which(simNND$Region == "Hispaniola"), c(3,4,6,7)]))
+  simPR <- mean(unlist(simNND[which(simNND$Region == "Puerto Rico"), c(3,4,5,7)]))
+  simMain <- mean(unlist(simNND[which(simNND$Region == "Mainland"), c(3,4,5,6)]))
+  totalsim[y] <- mean(c(simCuba,simJam,simHisp,simPR,simMain))
+}
+quantile(c(totalsim),.05)
+totalmean
+pval <- which(!is.na(match(sort(c(totalmean,totalsim)),totalmean)))/100
+
+hist(c(totalsim,totalmean))
+abline(v = totalmean, col = "red", lwd = 2)
+
+
+#RESULTS - it really matters whether you compare a species to the same species or a random one.
+# Former is super sig but the later is really not sig
+# I think former is correct 
+
+
+# L1OU --------------------------------------------------------------------
+
+lizard <- adjust_data(tree,phylopca$S[tree$tip.label,1:5])
+
+fit_ind <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 6, criterion = "pBIC")
+#saveRDS(fit_ind, "Outputs/shift_config_pBIC_MRCT.rds")
+#fit_ind_pBIC <- readRDS("Outputs/shift_config_pBIC_MCC.rds")
+
+fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "pBIC", nCores = 6)
+#saveRDS(fit_conv, "Outputs/convergent_regime_AIC_MRCT.rds")
+fit_conv <- readRDS("Outputs/convergent_regime_AIC_MCC.rds")
+
+optima <- as.matrix(fit_conv$optima)
+optima <- cbind(rownames(optima) ,optima,as.factor(fit_conv$optima[,1]))
+
+colnames(optima) <- c("Species","PC1","PC2","PC3","PC4","PC5","Peak")
+as.tibble(optima)
+optima <- distinct(as.tibble(optima),Peak, .keep_all = T) %>%
+  as.matrix
+
+
+plot(phylopca$S[,1],phylopca$S[,2],pch =19, col =col2[NewData$Ground])
+
+plot(optima[,"PC1"], optima[,"PC2"],  pch =19)
+text(optima[,"PC1"],optima[,"PC2"])
+
+dev.off()
+plot(fit_conv,edge.shift.ann = F,plot.bar = F,  asterisk = T, cex = 0.5)
+edgelabels(edge = c(300, 135),cex =0.5,frame = "none")
+
+fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind_AIC,nItrs = 100, multicore = T, nCores=7)
+#regime 1 - luteogularis
+#regime 10 - trunk anoles
+#regime 11 - olssoni & auratus
+#regime 12 - barahone & nobeli & vermiculatus
+#regime 13 - petersii & biporcatus
+#regime 14 - chrysolepis & gracilipes
+#regime 15 - second major Draconura shift and etheridgei
+#regime 16 - first major Draconura shift
+#regime 2 - darlingtoni & big twig
+#regime 3 - 4 twig regimes
+#regime 4 - 3 GB regimes
+#regime 5 - pinchoti
+#regime 6 - other GB with koopmani
+#regime 7 - mainland twig & angusticeps
+#regime 8 - two TC regimes
+#regime 9 - onca & lionotus/oxylophus
+
+#regime 1 - omiltemanus & ortonii & coelestinus
+#regime 10 - 4 GB regimes
+#regime 11 - 1 TC regime
+#regime 12 - lionotus
+#regime 13 - major Draconura radiation
+#regime 2 - 4 twig regimes
+#regime 3 - 4 twig regimes
+#regime 4 - 1 GB regime
+#regime 5 - salvini
+#regime 6 - chrysolepis and gracilipes
+#regime 7 - big twig and darlingtoni
+#regime 8 - two trunk + eugenegrahami
+#regime 9 - angusticeps and mainland twig
+
 
 # DFA w/ Caribbean --------------------------------------------------------
 
@@ -207,7 +321,7 @@ tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[whi
 compile <- synth.compile(lda = criteria.lda, predicted = predicted, hard.mode =  T,)
 compile
 tapply(compile$Predicted,compile$Ecomorph,length)
-tapply(compile$Predicted[which(compile$Ecomorph == "M")],compile$Predicted[which(compile$Ecomorph == "M")],length)
+tapply(compile$Predicted[which(compile$Ecomorph == "U")],compile$Predicted[which(compile$Ecomorph == "U")],length)
 
 
 Pred.Eco <- data.frame(Species = NewData$Species, Region = NewData$Region, Pred.Eco = NewData$Ecomorph)
@@ -236,12 +350,6 @@ for (i in 1:nrow(intermediate)) {
   tmp2 <- sort((criteria1[species,4:ncol(noclass)-1]),decreasing = F)
   tmp3 <- sort((criteria2[species,4:ncol(noclass)-1]),decreasing = F)
   tmp4 <- sort((criteria3[species,4:ncol(noclass)-1]),decreasing = F)
-  #if (as.numeric(tmp[1]) >= 0.9) {
-    #intermediate$DFA[i] <- paste0(names(tmp[1]))
-    #  intermediate$C1[i] <- paste0(names(tmp2[1]))
-    #  intermediate$C2[i] <- paste0(names(tmp3[1]))
-    #  intermediate$C3[i] <- paste0(names(tmp4[1]))
-  #}
   if ((as.numeric(tmp[1]) + as.numeric(tmp[2])) >= 0.900 & as.numeric(tmp[1]) < 0.9) {
     intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]))
     if (length(tmp2) >=2){
@@ -263,14 +371,14 @@ for (i in 1:nrow(intermediate)) {
       intermediate$C3[i] <- paste0(names(tmp4[1]))
     }
   }
-  if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
-  intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
-  intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
-  intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
-  intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
-  }
+  #if ((as.numeric(tmp[1]) + as.numeric(tmp[2]) + as.numeric(tmp[3])) >= 0.900 & as.numeric(tmp[1]) + as.numeric(tmp[2])< 0.9) {
+  #intermediate$DFA[i] <- paste0(names(tmp[1]),"/",names(tmp[2]),"/",names(tmp[3]))
+  #intermediate$C1[i] <- paste0(names(tmp2[1]),"/",names(tmp2[2]),"/",names(tmp2[3]))
+  #intermediate$C2[i] <- paste0(names(tmp3[1]),"/",names(tmp3[2]),"/",names(tmp3[3]))
+  #intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
+  #}
   match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
-  match2 <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[6]]))
+  match2 <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[6]][1]))
   if(isTRUE(match) == TRUE & isTRUE(match2) == TRUE) {
     intermediate$Match[i] <- intermediate$DFA[i]
   } else {
@@ -280,6 +388,22 @@ for (i in 1:nrow(intermediate)) {
 intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
 intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C3","Match")]
 intermediate
+
+tapply(intermediate[which(intermediate$Ecomorph == "M"), "Match"],intermediate[which(intermediate$Ecomorph == "M"), "Match"],length)
+
+# this is for later to do the simmap
+simmap.eco <- setNames(NewData$Ecomorph,NewData$Species)
+simmap.eco[which(simmap.eco == "M")] <- "U"
+simmap.eco[compile$Species] <- compile$Predicted
+simmap.col <- setNames(c("Blue", "Gold",  "ForestGreen", "tan4","Red", "Purple4","grey73"),sort(unique(simmap.eco)))
+simmap.eco<-to.matrix(simmap.eco,levels(as.factor(simmap.eco)))
+
+for (i in 1:nrow(intermediate)) {
+  #split <- str_split(intermediate[i,"Match"], "/")
+  #simmap.eco[intermediate$Species[i],c(split)[[1]]] <- 0.5
+  simmap.eco[intermediate$Species[i],-ncol(simmap.eco)] <- as.numeric(criteria.lda[intermediate$Species[i],3:(ncol(criteria.lda)-1)])
+  simmap.eco[intermediate$Species[i],"U"] <- 0
+}
 
 # DFA w/ Ground -----------------------------------------------------------
 
@@ -313,7 +437,7 @@ criteria.lda <- cbind(Species = rownames(predictions$x),
 criteria.lda.trim <- criteria.lda
 for (i in 1:nrow(criteria.lda.trim)) {
   tmp <- max(criteria.lda.trim[i,4:ncol(criteria.lda.trim)-1])
-  if (tmp > .90) {
+  if (tmp < .90) {
     criteria.lda.trim[i,"Pred.Eco"] <- NA
   }
 }
@@ -321,8 +445,8 @@ criteria.lda.trim <- as.data.frame(criteria.lda.trim[which(!is.na(criteria.lda.t
 
 tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],
        criteria.lda.trim$Ecomorph[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],length)
-tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
-       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],length)
+tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "U")],
+       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "U")],length)
 
 
 
@@ -338,7 +462,7 @@ tapply(criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],criteria1$Pred.Eco[whi
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
 criteria3 <- predicted$criteria3
-tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
+tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="U")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="U")],length)
 
 
 # Compile w/ Ground -------------------------------------------------------
@@ -451,7 +575,7 @@ for (i in 1:nrow(intermediate)) {
   #intermediate$C3[i] <- paste0(names(tmp4[1]),"/",names(tmp4[2]),"/",names(tmp4[3]))
   #}
   match <- all(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[4]]))
-  match2 <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[6]]))
+  match2 <- any(match(str_split(intermediate[i,], "/")[[3]],str_split(intermediate[i,], "/")[[6]][1]))
   if(isTRUE(match) == TRUE & isTRUE(match2) == TRUE) {
     intermediate$Match[i] <- intermediate$DFA[i]
   } else {
@@ -460,7 +584,25 @@ for (i in 1:nrow(intermediate)) {
 }
 intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
 intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C3","Match")]
-intermediate[is.na(match(intermediate$Species,new.compile2$Species)),]
+intermediate <- intermediate[is.na(match(intermediate$Species,new.compile2$Species)),]
+intermediate
+
+tapply(intermediate[which(intermediate$Ecomorph == "M"), "Match"],intermediate[which(intermediate$Ecomorph == "M"), "Match"],length)
+
+
+# this is for later to do the simmap
+simmap.eco2 <- setNames(NewData$Ground,NewData$Species)
+simmap.eco2[which(simmap.eco2 == "M")] <- "U"
+simmap.eco2[new.compile2$Species] <- new.compile2$Predicted
+simmap.col2 <- setNames(c("Blue", "cyan","Gold",  "ForestGreen", "tan4","Red", "Purple4","grey73"),sort(unique(simmap.eco2)))
+simmap.eco2<-to.matrix(simmap.eco2,levels(as.factor(simmap.eco2)))
+
+for (i in 1:nrow(intermediate)) {
+  #split <- str_split(intermediate[i,"Match"], "/")
+  #simmap.eco[intermediate$Species[i],c(split)[[1]]] <- 0.5
+  simmap.eco2[intermediate$Species[i],-ncol(simmap.eco2)] <- as.numeric(criteria.lda[intermediate$Species[i],3:(ncol(criteria.lda)-1)])
+  simmap.eco2[intermediate$Species[i],"U"] <- 0
+}
 
 
 # Randomization Tests -----------------------------------------------------
@@ -472,133 +614,86 @@ Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground,as.data.frame(phylopca$S)) 
 
 bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "random.dist", p.adj = "bonferroni", nsim = 1000)
 
-
-
-
-
-# Caribbean vs Mainland Sim -----------------------------------------------
-
-FiveIsland <- NewData %>%
-  filter(Country == "DR" | Country == "Haiti" | Country == "Puerto Rico" | 
-           Country == "Cuba" | Country == "Jamaica"| Region ==  "Mainland")
-FiveIsland <- cbind(FiveIsland[,1:5], phylopca$S[rownames(FiveIsland),])
-FiveIsland <- FiveIsland[c(FiveIsland$Species[which(FiveIsland$Region == "Caribbean" | FiveIsland$Ground == "G")],
-             NewData[!is.na(match(NewData$Species,new.compile2$Species)) & NewData$Region == "Mainland","Species"]),]
-
-
-euc <- as.matrix(dist(FiveIsland[,6:10], method = "euclidean"))
-MainNND <- data.frame(Species = as.character(rownames(euc)), NND.Species = NA, NND = NA)
-for (i in 1:nrow(euc)) {
-  MainNND[i,"NND.Species"] <- names(sort(euc[i,which(!FiveIsland$Region == "Mainland")])[2])
-  MainNND[i,"NND"] <- sort(euc[i,which(!FiveIsland$Region == "Mainland")])[2]
-}
-rownames(MainNND) <- MainNND$Species
-meanMain<- round(mean(MainNND[which(FiveIsland$Region == "Mainland"),"NND"]),3)
-meanMain
-
-CarNND <- data.frame(Species = as.character(rownames(euc)), NND.Species = NA, NND = NA)
-for (i in 1:nrow(euc)) {
-  CarNND[i,"NND.Species"] <- names(sort(euc[i,which(!FiveIsland$Region == "Caribbean")])[2])
-  CarNND[i,"NND"] <- sort(euc[i,which(!FiveIsland$Region == "Caribbean")])[2]
-}
-rownames(CarNND) <- CarNND$Species
-meanCar <- round(mean(CarNND[which(FiveIsland$Region == "Caribbean"),"NND"]),3)
-meanCar
-
-meanTotal<-mean(meanMain,meanCar)
-
-sim.val <-matrix(NA,100,1)
-sim.val2 <-sim.val
-totalsim <- sim.val
-for(y in 1:nrow(sim.val)) {
-  simdata <- fastBM(tree,nsim = 5) # simulate data under BM
-  sim.euc <- as.matrix(dist(simdata[FiveIsland$Species,], method = "euclidean"))
-  simNND <- data.frame(Species = as.character(rownames(sim.euc)), NND = NA)
-  for (i in 1:nrow(sim.euc)) {
-    simNND[i,"NND"] <- sim.euc[i,MainNND$NND.Species[i]]
-  }
-  sim.val[y] <- round(mean(simNND[which(FiveIsland$Region == "Mainland"),"NND"]),3)
-  
-  simNND2 <- data.frame(Species = as.character(rownames(sim.euc)), NND = NA)
-  for (i in 1:nrow(sim.euc)) {
-    simNND2[i,"NND"] <- sim.euc[i,CarNND$NND.Species[i]]
-  }
-  sim.val2[y] <- round(mean(simNND2[which(FiveIsland$Region == "Caribbean"),"NND"]),3)
-  totalsim[y] <- mean(sim.val[y], sim.val2[y])
-}
-quantile(totalsim,.05)
-
-hist(c(totalsim,meanTotal))
-abline(v = meanTotal, col = "red", lwd = 2)
-
-#RESULTS - it really matters whether you compare a species to the same species or a random one.
-# Former is super sig but the later is really not sig
-# I think former is correct 
-
 # Simulated Trait Data ----------------------------------------------------
 
+
+Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground,as.data.frame(phylopca$S))
 # all ecomorph comparisons with multi comparison correction
-bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "sim.dist", p.adj = "bonferroni", nsim = 1000)
+sim.dist(tree = tree, scores = Ecomorph.Scores, axes =5, group1 = "CG", group2 = "TG", nsim = 1000)
+bon2 <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "sim.dist", p.adj = "bonferroni", nsim = 1000)
 
 # simulate data and test compare distance to centroid and NND against null
-var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 13, nsim = 1000)
-p.adjust(var[,4], method = "bonferroni")
+var <- sim.ED(tree, scores = Ecomorph.Scores, axes = 5, nsim = 100)
+p.adjust(var[,2], method = "bonferroni")
 
 
 # SIMMAP Analyses w/Caribbean  --------------------------------------------
 
-simmap.eco <- setNames(NewData$Ecomorph,NewData$Species)
-simmap.eco[which(simmap.eco == "M")] <- "U"
-simmap.eco[compile$Species] <- compile$Predicted
-simeco.col <- setNames(c("Blue", "Gold",  "ForestGreen", "tan4","Red", "Purple4","grey73"),sort(unique(simmap.eco)))
-simmap.eco<-to.matrix(simmap.eco,levels(as.factor(simmap.eco)))
-
-for (i in 1:nrow(intermediate)) {
-  #split <- str_split(intermediate[i,"Match"], "/")
-  #simmap.eco[intermediate$Species[i],c(split)[[1]]] <- 0.5
-  simmap.eco[intermediate$Species[i],-ncol(simmap.eco)] <- as.numeric(criteria.lda[intermediate$Species[i],3:(ncol(criteria.lda)-1)])
-  simmap.eco[intermediate$Species[i],"U"] <- 0
-}
-# ER -276.4185 df 1
-#> SYM -244.3273 df 21
+# ER -273.6212 df 1
+#> SYM -246.9038 df 21
 #> ER vs SYM LR 64.1824 df 20 
-#-2*(-276.4185 - (-244.3273))
+#-2*(-273.6212 - (-246.9038))
 #quantile(rchisq(10000, 20),.95) #SYM IS BETTER!!!! YAY
-# ARD -235.6913 df 42
+# ARD -236.2189 df 42
 # SYM vs ARD LR 17.272 df 21
-#-2*(-244.3273 - (-235.6913))
+#-2*(-246.9038 - (-236.2189))
 #quantile(rchisq(10000, 21),.95) #ARD IS NOT BETTER!!!! GO FOR SYM
 
-simmap<-make.simmap(tree,simmap.eco,model = "SYM",nsim = 1)
-simmap.trim <- lapply(simmap,drop.tip.simmap,NewData$Species[which(!NewData$Region == "Mainland")])
-class(simmap.trim) <- "multiPhylo"
-mainland.tree <- drop.tip(tree, setdiff(tree$tip.label,NewData$Species[which(NewData$Region == "Mainland")]))
-pd<-describe.simmap(simmap.trim[[1]], plot = FALSE, ref.tree = mainland.tree)
-plot(simmap.trim, fsize = 0.5, col = simeco.col)
-nodelabels(pie=pd$ace,piecol = simeco.col,cex=.4)
-tiplabels(pie=simmap.eco[simmap.trim[[1]]$tip.label,],piecol = simeco.col,cex=0.2)
+#simmap<-make.simmap(tree,simmap.eco,model = "SYM",nsim = 1000)
+
+# Post Burn In Sim
+hundotrees <- read.tree("Trees/Poe_2017_MCC_postburnin_names_100.txt")
+hundotrees<-lapply(hundotrees,keep.tip,tree$tip.label)
+class(hundotrees) <- "multiPhylo"
+Mainland.tree <- drop.tip(tree,setdiff(tree$tip.label,NewData$Species[which(NewData$Region == "Mainland")]))
+hundotrees <- lapply(hundotrees, ladderize, right = FALSE)
+class(hundotrees) <- "multiPhylo"
+
+#define which set of simmap species and col to use
+simeco <- simmap.eco2
+simeco.col <- simmap.col2
+
+post.sim<-make.simmap(tree,simmap.eco,model = "SYM",nsim = 1000)
+write.simmap(post.sim, "Outputs/SIMMAP_SYM_Caribbean_MRCT.txt", append = TRUE, version = 1.0)
+#write.simmap(post.sim1, "Outputs/SIMMAP_SYM_Ground_MCC.txt", append = TRUE, version = 1.0)
+
+#post.sim <- read.simmap("Outputs/SIMMAP_SYM_Ground_postburnin.txt", format="phylip",version =1.0)
+#class(post.sim) <- "multiPhylo"
+
+simmap.tree<-lapply(post.sim,drop.tip.simmap,NewData$Species[which(!NewData$Region == "Mainland")])
+class(simmap.tree) <- "multiPhylo"
+pd<-describe.simmap(simmap.tree, plot = FALSE, ref.tree = Mainland.tree)
 
 transitions <- pd$count
-transition.type <- (",TG$")
+transition.type <- (",CG$")
 tapply(apply(transitions[,grep(transition.type, colnames(transitions))],1,sum),
        apply(transitions[,grep(transition.type, colnames(transitions))],1,sum),length)
 
-
-# L1ou attempt ------------------------------------------------------------
-tree <- force.ultrametric(tree)
-lizard <- adjust_data(tree,as.matrix(phylopca$S[,1:5]))
-fit_ind_AIC <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 7, criterion = "AICc")
-fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind_AIC,nItrs = 100, multicore = T, nCores=4)
-
-fit_conv_AIC <- estimate_convergent_regimes(fit_ind_AIC, criterion = "AICc", nCores = 7)
-plot(fit_conv_AIC, show.data	= FALSE)
-
-fit_conv_AIC$shift.configuration
-plot(fit_ind_AIC, edge.ann.cex=1, cex=0.5, label.offset=0.02, edge.label.ann = FALSE)
+#plot(simmap.tree[[1]], col = simeco.col, fsize = 0.5, offset = 0.3)
+plotTree(Mainland.tree, fsize = 0.5, lwd = 2, offset = 0.3)
+nodelabels(pie=pd$ace,piecol=simeco.col[colnames(pd$ace)],cex=.35)
+tiplabels(pie=simeco[Mainland.tree$tip.label,],piecol=simeco.col,cex=0.2)
 
 
-nEdges <- Nedge(lizard$tree) # total number of edges
-ew <- rep(1,nEdges)  # to set default edge width of 1
-ew[fit_ind_AIC$shift.configuration] <- 3   # to widen edges with a shift 
-plot(fit_ind_AIC, cex=0.5, label.offset=0.02, edge.width=ew)
+
+# Wheatsheaf's Index ------------------------------------------------------
+
+dat <- cbind(NewData[,c("Species", "Ground")],as.data.frame(phylopca$S)[,1:5])
+dat[which(dat[,"Ground"] == "G"),2] <- 1
+dat[new.compile2[which(new.compile2$Predicted == "G"),"Species"],2] <- 1
+dat[which(!dat[,"Ground"] == 1),2] <- 0
+colnames(dat) <- c("species","focal","PC1","PC2","PC3","PC4","PC5")
+
+conv <- windex(dat[tree$tip.label,], tree, c(3:7), SE = FALSE);conv
+cov.text <- test.windex(dat[tree$tip.label,], tree, c(3:7),reps = 100, SE = FALSE);cov.text
+
+
+dat <- cbind(NewData[,c("Species", "Ground")],as.data.frame(phylopca$S)[,1:5])
+dat[compile[which(compile$Predicted == "Tw"),"Species"],2] <- 1
+dat[which(!dat[,"Ground"] == 1),2] <- 0
+dat <- dat[Mainland.tree$tip.label,]
+colnames(dat) <- c("species","focal","PC1","PC2","PC3","PC4","PC5")
+
+conv <- windex(dat[Mainland.tree$tip.label,], Mainland.tree, c(3:7), SE = FALSE);conv
+cov.text <- test.windex(dat[Mainland.tree$tip.label,], Mainland.tree, c(3:7),reps = 1000, SE = FALSE);cov.text
 

@@ -1,5 +1,36 @@
 library(pvclust)
 
+EcoData <- read_excel("Data/MainlandAnole_SpeciesList.xlsx")%>%
+  as.data.frame
+rownames(EcoData) <- EcoData$Species 
+EcoData <- EcoData[sort(EcoData$Species),]
+
+RawPerch <- read_excel("Data/MainlandAnole_EcoData.xlsx") %>%
+  filter(., Quality == "S" | Quality == "AS" ) %>%
+  dplyr::select(.,Species,'Height N','Perch Height (m)','Diameter N', 'Perch Diameter (cm)') %>%
+  as.data.frame
+colnames(RawPerch) <- c("Species", "PH.N", "PH", "PD.N", "PD")
+RawPerch[is.na(RawPerch)] <- 1
+PerchData <- matrix(nrow =length(unique(RawPerch$Species)), ncol = 3) %>% as.data.frame
+colnames(PerchData) <- c("Species", "PH", "PD")
+PerchData[,1] <- unique(RawPerch$Species)
+
+for (i in 1:nrow(PerchData)) {
+  species <- as.character(PerchData[i,1])
+  PerchData[i,2] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PH"])),
+                                        w = as.numeric(unlist(as.numeric(filter(RawPerch, Species == species)[,"PH.N"])/
+                                                                sum(as.numeric(filter(RawPerch, Species == species)[,"PH.N"]))))),2) 
+  
+  PerchData[i,3] <- round(weighted.mean(x = as.numeric(unlist(filter(RawPerch, Species == species)[,"PD"])),
+                                        w = as.numeric(unlist(as.numeric(filter(RawPerch, Species == species)[,"PD.N"])/
+                                                                sum(as.numeric(filter(RawPerch, Species == species)[,"PD.N"]))))),2)
+  remove(species)
+}
+
+EcoData <- left_join(EcoData,PerchData)
+rownames(EcoData) <- EcoData$Species
+remove(PerchData,RawPerch)
+
 Substrate <- read_excel("Data/MainlandAnole_EcoData.xlsx") 
 Substrate$Percentage <- round(apply(Substrate[,4:27],1, FUN = sum,  na.rm = TRUE),1)
 Substrate[,4:27] <- Substrate[,4:27]*Substrate$"Substrate N"/100
