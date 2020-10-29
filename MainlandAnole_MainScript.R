@@ -3,13 +3,12 @@ source("MainlandAnole_Functions.R")
 library(tidyverse)
 library(readxl)
 library(phytools)
-library(factoextra)
-library(geometry)
 library(plyr)
 library(ggpubr)
 library(MASS)
 library(geiger)
 library(l1ou)
+library(windex)
 
 
 # Read Tree ---------------------------------------------------------------
@@ -182,7 +181,7 @@ for(y in 1:nrow(totalsim)) {
 }
 quantile(c(totalsim),.05)
 totalmean
-pval <- which(!is.na(match(sort(c(totalmean,totalsim)),totalmean)))/100
+which(!is.na(match(sort(c(totalmean,totalsim)),totalmean)))/100
 
 hist(c(totalsim,totalmean))
 abline(v = totalmean, col = "red", lwd = 2)
@@ -199,7 +198,7 @@ lizard <- adjust_data(tree,phylopca$S[tree$tip.label,1:5])
 
 fit_ind <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 6, criterion = "pBIC")
 #saveRDS(fit_ind, "Outputs/shift_config_pBIC_MRCT.rds")
-#fit_ind_pBIC <- readRDS("Outputs/shift_config_pBIC_MCC.rds")
+fit_ind <- readRDS("Outputs/shift_config_AIC_MCC.rds")
 
 fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "pBIC", nCores = 6)
 #saveRDS(fit_conv, "Outputs/convergent_regime_AIC_MRCT.rds")
@@ -223,7 +222,8 @@ dev.off()
 plot(fit_conv,edge.shift.ann = F,plot.bar = F,  asterisk = T, cex = 0.5)
 edgelabels(edge = c(300, 135),cex =0.5,frame = "none")
 
-fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind_AIC,nItrs = 100, multicore = T, nCores=7)
+fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind,nItrs = 100, multicore = T, nCores=6)
+saveRDS(fit_ind_AIC_bootstrap, "Outputs/shift_bootstrap_AIC_MCC.rds")
 #regime 1 - luteogularis
 #regime 10 - trunk anoles
 #regime 11 - olssoni & auratus
@@ -321,7 +321,7 @@ tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[whi
 compile <- synth.compile(lda = criteria.lda, predicted = predicted, hard.mode =  T,)
 compile
 tapply(compile$Predicted,compile$Ecomorph,length)
-tapply(compile$Predicted[which(compile$Ecomorph == "U")],compile$Predicted[which(compile$Ecomorph == "U")],length)
+tapply(compile$Predicted[which(compile$Ecomorph == "M")],compile$Predicted[which(compile$Ecomorph == "M")],length)
 
 
 Pred.Eco <- data.frame(Species = NewData$Species, Region = NewData$Region, Pred.Eco = NewData$Ecomorph)
@@ -445,8 +445,8 @@ criteria.lda.trim <- as.data.frame(criteria.lda.trim[which(!is.na(criteria.lda.t
 
 tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],
        criteria.lda.trim$Ecomorph[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],length)
-tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "U")],
-       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "U")],length)
+tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
+       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],length)
 
 
 
@@ -462,7 +462,7 @@ tapply(criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],criteria1$Pred.Eco[whi
 criteria2 <- predicted$criteria2
 tapply(criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],criteria2$Pred.Eco[which(criteria2$Ecomorph=="M")],length)
 criteria3 <- predicted$criteria3
-tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="U")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="U")],length)
+tapply(criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],criteria3$Pred.Eco[which(criteria3$Ecomorph=="M")],length)
 
 
 # Compile w/ Ground -------------------------------------------------------
@@ -519,7 +519,7 @@ Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
 rownames(Pred.Eco2) <- Pred.Eco2$Species
 Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2$Species)),2] <- compile2$Predicted
 
-ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = tree$tip.label, 
+ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
            groups = Pred.Eco2$Pred.Eco, labels = FALSE)
 
 # Intermediate w/Ground --------------------------------------------------
