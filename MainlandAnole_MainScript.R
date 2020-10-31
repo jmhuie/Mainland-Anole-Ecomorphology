@@ -137,20 +137,23 @@ for (i in 1:nrow(MainNND)) {
   MainNND[i,"PR.NND"] <- min(euc[i,which(FiveIsland$Region == "Puerto Rico")],na.rm = T)
   MainNND[i,"Main.NND"] <- min(euc[i,which(FiveIsland$Region == "Mainland")],na.rm = T)
 }
-Cuba <- mean(unlist(MainNND[which(MainNND$Region == "Cuba"),c(4,5,6,7)]))
-Jam <- mean(unlist(MainNND[which(MainNND$Region == "Jamaica"),c(3,5,6,7)]))
-Hisp <- mean(unlist(MainNND[which(MainNND$Region == "Hispaniola"),c(3,4,6,7)]))
-PR <- mean(unlist(MainNND[which(MainNND$Region == "Puerto Rico"),c(3,4,5,7)]))
-Main <- mean(unlist(MainNND[which(MainNND$Region == "Mainland"),c(3,4,5,6)]))
-totalmean <- mean(c(Cuba,Jam,Hisp,PR,Main))
-totalmean
+Cuba <- mean(unlist(MainNND[which(MainNND$Region == "Cuba"),c(7)]))
+Jam <- mean(unlist(MainNND[which(MainNND$Region == "Jamaica"),c(7)]))
+Hisp <- mean(unlist(MainNND[which(MainNND$Region == "Hispaniola"),c(7)]))
+PR <- mean(unlist(MainNND[which(MainNND$Region == "Puerto Rico"),c(7)]))
+Main <- (apply(MainNND[which(MainNND$Region == "Mainland"),c(3,4,5,6)],2,mean))
+totalmean <- mean(c(Cuba,Jam,Hisp,PR,Main));totalmean
+#totalmean <- mean(c(Cuba,Jam,Hisp,PR,apply(MainNND[,3:6],2,mean)))
+#totalmean <- Main
 
-totalsim <-matrix(NA,100,1)
+
+
 fit1 <- fitContinuous(tree,setNames(phylopca$S[,1],rownames(phylopca$S))[tree$tip.label],model = "BM")
 fit2 <- fitContinuous(tree,setNames(phylopca$S[,2],rownames(phylopca$S))[tree$tip.label],model = "BM")
 fit3 <- fitContinuous(tree,setNames(phylopca$S[,3],rownames(phylopca$S))[tree$tip.label],model = "BM")
 fit4 <- fitContinuous(tree,setNames(phylopca$S[,4],rownames(phylopca$S))[tree$tip.label],model = "BM")
 fit5 <- fitContinuous(tree,setNames(phylopca$S[,5],rownames(phylopca$S))[tree$tip.label],model = "BM")
+totalsim <-matrix(NA,1000,1)
 for(y in 1:nrow(totalsim)) {
   simNND <- data.frame(FiveIsland[,c(1,4)], 
                        Cuba.NND = NA,
@@ -172,16 +175,17 @@ for(y in 1:nrow(totalsim)) {
     simNND[i,"PR.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Puerto Rico")], na.rm = T)
     simNND[i,"Main.NND"] <- min(sim.euc[i,which(FiveIsland$Region ==  "Mainland")], na.rm = T)
   }
-  simCuba <- mean(unlist(simNND[which(simNND$Region == "Cuba"), c(4,5,6,7)]))
-  simJam <- mean(unlist(simNND[which(simNND$Region == "Jamaica"), c(3,5,6,7)]))
-  simHisp <- mean(unlist(simNND[which(simNND$Region == "Hispaniola"), c(3,4,6,7)]))
-  simPR <- mean(unlist(simNND[which(simNND$Region == "Puerto Rico"), c(3,4,5,7)]))
-  simMain <- mean(unlist(simNND[which(simNND$Region == "Mainland"), c(3,4,5,6)]))
-  totalsim[y] <- mean(c(simCuba,simJam,simHisp,simPR,simMain))
+  simCuba <- mean(unlist(simNND[which(simNND$Region == "Cuba"), c(7)]))
+  simJam <- mean(unlist(simNND[which(simNND$Region == "Jamaica"), c(7)]))
+  simHisp <- mean(unlist(simNND[which(simNND$Region == "Hispaniola"), c(7)]))
+  simPR <- mean(unlist(simNND[which(simNND$Region == "Puerto Rico"), c(7)]))
+  simMain <- (apply(simNND[which(simNND$Region == "Mainland"), c(3,4,5,6)],2,mean))
+  #totalsim[y] <- mean(c(simCuba,simJam,simHisp,simPR))
+  totalsim[y] <- mean(c(simCuba,simJam,simHisp,simMain))
 }
 quantile(c(totalsim),.05)
 totalmean
-which(!is.na(match(sort(c(totalmean,totalsim)),totalmean)))/100
+which(!is.na(match(sort(c(totalmean,totalsim)),totalmean)))/1000
 
 hist(c(totalsim,totalmean))
 abline(v = totalmean, col = "red", lwd = 2)
@@ -198,11 +202,11 @@ lizard <- adjust_data(tree,phylopca$S[tree$tip.label,1:5])
 
 fit_ind <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 6, criterion = "pBIC")
 #saveRDS(fit_ind, "Outputs/shift_config_pBIC_MRCT.rds")
-fit_ind <- readRDS("Outputs/shift_config_AIC_MCC.rds")
+fit_ind <- readRDS("Outputs/shift_config_AIC_MRCT.rds")
 
-fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "pBIC", nCores = 6)
+fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "AIC", nCores = 4)
 #saveRDS(fit_conv, "Outputs/convergent_regime_AIC_MRCT.rds")
-fit_conv <- readRDS("Outputs/convergent_regime_AIC_MCC.rds")
+fit_conv <- readRDS("Outputs/convergent_regime_AIC_MRCT.rds")
 
 optima <- as.matrix(fit_conv$optima)
 optima <- cbind(rownames(optima) ,optima,as.factor(fit_conv$optima[,1]))
