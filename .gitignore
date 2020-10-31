@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 Trees/*
+Outputs/TooBig/*
 .DS_Store
