@@ -20,13 +20,13 @@ rownames(EcoData) <- EcoData$Species
 EcoData <- EcoData[sort(EcoData$Species),]
 
 tree <- read.nexus("Trees/Poe_2017_MCC_names.txt")
+#tree<-chronopl(tree,lambda = 0 ,age.min = c(70,17), age.max = c(72,23), node = c(384,407))
 #tree <- read.nexus("Trees/Poe_2017_Time_names.tre")
 tree <- ladderize(tree, right = FALSE)
 tree <- drop.tip(tree, setdiff(tree$tip.label, unique(EcoData$Species))) #keeps tip labels that matches vector
-plotTree(tree,  fsize =0.5) # plot tree. looks pretty ultrametric but R doesn't think so
-if (is.ultrametric(tree) == FALSE) {
-  tree <- force.ultrametric(tree) # forces tree to be ultrametric
-}
+#if (is.ultrametric(tree) == FALSE) {
+#  tree <- force.ultrametric(tree) # forces tree to be ultrametric
+#}
 dev.off()
 
 # Morphology Data Cleaning ------------------------------------------------
@@ -94,7 +94,8 @@ col2 <- setNames(c("Blue", "Gold", "grey73", "ForestGreen", "tan4", "Red", "Purp
 
 species <- rownames(phylopca$S)
 eco <- setNames(NewData[species,"Ground"], species)
-phylopca$S[,c(2)] <-  phylopca$S[,c(2)] *-1
+phylopca$S[,c(3)] <-  phylopca$S[,c(3)] *-1
+phylopca$S[,c(5)] <-  phylopca$S[,c(5)] *-1
 ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species, 
                 groups = eco, labels = F, 
                 region = NewData[species,"Region"]),
@@ -206,21 +207,28 @@ fit_ind <- readRDS("Outputs/shift_config_AIC_MRCT.rds")
 
 fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "AIC", nCores = 4)
 #saveRDS(fit_conv, "Outputs/convergent_regime_AIC_MRCT.rds")
-fit_conv <- readRDS("Outputs/convergent_regime_AIC_MRCT.rds")
+fit_conv <- readRDS("Outputs/convergent_regime_AIC_MCC.rds")
 
-optima <- as.matrix(fit_conv$optima)
-optima <- cbind(rownames(optima) ,optima,as.factor(fit_conv$optima[,1]))
+optima <- data.frame(fit_conv$optima)
+colnames(optima) <- c("PC1","PC2","PC3","PC4","PC5")
+optima<-distinct(optima, PC1,.keep_all = T)
+optima$col <- NewData[rownames(optima),"Ground"]
+optima["vermiculatus","col"] <- "CG"
+optima["altavelensis","col"] <- "Tr"
+optima["barbatus","col"] <- "Tw"
+optima2 <- optima[which(!rownames(optima) == "luteogularis" & !rownames(optima) == "pinchoti") ,]
+#optima2 <- optima[which(!rownames(optima) == "salvini" & !rownames(optima) == "noblei") ,]
+#optima2["auratus","col"] <- "G"
+#optima2["omiltemanus","col"] <- "TC"
 
-colnames(optima) <- c("Species","PC1","PC2","PC3","PC4","PC5","Peak")
-as.tibble(optima)
-optima <- distinct(as.tibble(optima),Peak, .keep_all = T) %>%
-  as.matrix
 
 
-plot(phylopca$S[,1],phylopca$S[,2],pch =19, col =col2[NewData$Ground])
 
-plot(optima[,"PC1"], optima[,"PC2"],  pch =19)
-text(optima[,"PC1"],optima[,"PC2"])
+ggplot(as.data.frame(phylopca$S), aes(x = PC1,y=PC2)) +
+  geom_point(aes(fill = NewData$Ground), col = "black",shape =21, size = 2) +
+  scale_fill_manual(values = col) +
+  geom_point(data = as.data.frame(optima2), aes(x = PC1, y = PC2, fill = col), size = 4, shape = 21)+
+  theme_classic()
 
 dev.off()
 plot(fit_conv,edge.shift.ann = F,plot.bar = F,  asterisk = T, cex = 0.5)

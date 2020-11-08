@@ -12,40 +12,34 @@ ggplot.pca <- function(pca, species, groups, region = NewData$Region, axis1, axi
   scores$Species <- species
   scores$Group <- groups
   scores$Region <- region
+  scaleFUN <- function(x) sprintf("%.1f", x)
   hulls <- ddply(scores, .(Group), function(scores) scores[chull(scores[,axis1], scores[,axis2]), ])
   hulls <- hulls[!hulls$Group=="M" & !hulls$Group=="U",] 
-  plot <- ggplot(scores, aes(x = setNames(scores[,axis1],species), y = setNames(scores[,axis2],species), col = Group))+
+  plot <- ggplot(scores, aes(x = scores[,axis1], y = scores[,axis2], col = Group))+
     geom_polygon(data=hulls, aes(x = hulls[,axis1], y = hulls[,axis2], group=Group, fill = Group), alpha = 0.4, show.legend = FALSE) +# size = 0.75)+
     geom_point(aes(fill=Group, shape=(Region)), colour = "black", size = 1.5) +
     labs(fill = "Ecomorph") +
-    scale_shape_manual(values = c(21,23,24)) +
+    scale_shape_manual(values = c(21,22,24)) +
     scale_colour_manual(values = col) +
     scale_fill_manual(values = col,
                       guide = guide_legend(override.aes = aes(shape = 21, color = "black"))) +  
     xlab(paste0("pPC",axis1," (", round(diag(pca$Eval)/sum(pca$Eval)*100, digits = 1)[axis1], "% explained var.)")) +
     ylab(paste0("pPC",axis2," (", round(diag(pca$Eval)/sum(pca$Eval)*100, digits = 1)[axis2], "% explained var.)")) +
-    theme(axis.line.x = element_line(size = .5, colour = "black"),
-          axis.line.y = element_line(size = .5, colour = "black"),
-          panel.background = element_rect(fill = "white"), # bg of the panel 
-          plot.background = element_rect(fill = "white"), # bg of the plot
-          panel.grid.major = element_blank(), # get rid of major grid
-          panel.grid.minor = element_blank(), # get rid of minor grid
-          legend.background = element_rect(fill = "white"), # get rid of legend bg
-          legend.box.background = element_rect(fill = "white"),
-          legend.key = element_blank(),
-          legend.title = element_blank(),
-          text=element_text(colour="black", size = 8, face = "bold"),
-          axis.text.x=element_text(colour="black", size = 7),
-          axis.text.y=element_text(colour="black", size = 7),
-          axis.title.x=element_text(colour="black", size = 8, face = "bold"),
-          axis.ticks = element_line(colour = "black", size = .5),
-          legend.position = "none",
-          plot.margin=unit(c(.5,.5,.5,.5),"cm"))
+    theme_classic2()+ 
+    theme(legend.position = "None",
+          axis.title.x=element_text(size = 8, face = "bold"),
+          axis.title.y=element_text(size = 8, face = "bold"),
+          axis.text.x=element_text(size = 7,face = "bold"),
+          axis.text.y=element_text(size = 7,face = "bold"),
+          plot.margin=unit(c(.5,.5,.5,.5),"cm"))+
+    scale_y_continuous(labels=scaleFUN) +
+    scale_x_continuous(labels=scaleFUN) 
   if (labels == TRUE) {
     plot + geom_text(aes(label=c(rownames(scores)), col = groups),hjust=0, vjust=0, size = 3)
   } else {
     plot
   }
+  return(plot)
 }
 
 ###### Euclidean Distance Predict Class #####
