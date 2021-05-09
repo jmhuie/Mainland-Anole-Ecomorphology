@@ -7,3 +7,6 @@ Outputs/*
 .DS_Store
 Mahler_et_al_2013_Data/*
 Ignore/*
+.MainlandAnole_MainScript.R
+.MainlandAnole_Functions.R
+Data/MainlandAnole_MorphoData.xlsx
