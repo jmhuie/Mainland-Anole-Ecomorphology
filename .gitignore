@@ -3,6 +3,7 @@
 .RData
 .Ruserdata
 Trees/*
-Outputs/TooBig/*
-..DS_Store
+Outputs/*
+.DS_Store
 Mahler_et_al_2013_Data/*
+Ignore/*
