@@ -19,7 +19,7 @@ ggplot.pca <- function(pca, species, groups, region = NewData$Region, axis1, axi
     geom_polygon(data=hulls, aes(x = hulls[,axis1], y = hulls[,axis2], group=Group, fill = Group), alpha = 0.4, show.legend = FALSE) +# size = 0.75)+
     geom_point(aes(fill=Group, shape=(Region)), colour = "black", size = 1.5) +
     labs(fill = "Ecomorph") +
-    scale_shape_manual(values = c(21,22,24)) +
+    scale_shape_manual(values = setNames(c(21,24,22),unique(NewData$Region))) +
     scale_colour_manual(values = col) +
     scale_fill_manual(values = col,
                       guide = guide_legend(override.aes = aes(shape = 21, color = "black"))) +  
@@ -35,7 +35,7 @@ ggplot.pca <- function(pca, species, groups, region = NewData$Region, axis1, axi
     scale_y_continuous(labels=scaleFUN) +
     scale_x_continuous(labels=scaleFUN) 
   if (labels == TRUE) {
-    plot + geom_text(aes(label=c(rownames(scores)), col = groups),hjust=0, vjust=0, size = 3)
+    plot <- plot + geom_text(aes(label=c(rownames(scores)), col = groups),hjust=0, vjust=0, size = 3)
   } else {
     plot
   }
@@ -304,7 +304,7 @@ ggbox <- function(data = EcomorphData, group = "Ground", trait = "SVL", ylab = "
     scale_fill_manual(values=col) +
     xlab("") +
     ylab(ylab) +
-    scale_x_discrete(labels = c("CG", "GB","G", "TR", "TC", "TG", "Tw")) +
+    scale_x_discrete(labels = c("CG", "G","GB","TC", "TG","Tr", "Tw")) +
     scale_y_continuous(labels = scales::number_format(accuracy = 0.1)) +
     theme(axis.line.x = element_line(size = .65, colour = "black"),
           axis.line.y = element_line(size = .65, colour = "black"),

@@ -9,6 +9,7 @@ library(MASS)
 library(geiger)
 library(l1ou)
 library(windex)
+library(plotly)
 
 
 # Read Tree ---------------------------------------------------------------
@@ -20,14 +21,20 @@ rownames(EcoData) <- EcoData$Species
 EcoData <- EcoData[sort(EcoData$Species),]
 
 tree <- read.nexus("Trees/Poe_2017_MCC_names.txt")
-#tree<-chronopl(tree,lambda = 0 ,age.min = c(70,17), age.max = c(72,23), node = c(384,407))
-#tree <- read.nexus("Trees/Poe_2017_Time_names.tre")
-tree <- ladderize(tree, right = FALSE)
+#tree <- read.nexus("Trees/Poe_2017_Time_names.tre") # remove tag to use time tree
+
+tree$tip.label[which(tree$tip.label=="cybotes")] <- "hispaniolae"
+tree$tip.label[which(tree$tip.label=="tropidonotus")] <- "mccraniei"
+tree$tip.label[which(tree$tip.label=="polylepis")] <- "osa"
+#tree$tip.label[which(tree$tip.label=="argillaceus")] <- "ruibali" # remove tag when using time tree
+
+
+#tree <- ladderize(tree, right = T)
 tree <- drop.tip(tree, setdiff(tree$tip.label, unique(EcoData$Species))) #keeps tip labels that matches vector
-#if (is.ultrametric(tree) == FALSE) {
-#  tree <- force.ultrametric(tree) # forces tree to be ultrametric
-#}
-dev.off()
+if (is.ultrametric(tree) == FALSE) {
+  tree <- force.ultrametric(tree) # forces tree to be ultrametric. Tree is ultrametic but R did not read that way due to rounding
+}
+
 
 # Morphology Data Cleaning ------------------------------------------------
 
@@ -93,9 +100,12 @@ col <- setNames(c("Blue","cyan", "Gold", "grey73", "ForestGreen", "tan4", "Red",
 col2 <- setNames(c("Blue", "Gold", "grey73", "ForestGreen", "tan4", "Red", "Purple4", "Darkorange1"),sort(unique(NewData$Ecomorph)))
 
 species <- rownames(phylopca$S)
+#species <- rownames(phylopca$S[which(!NewData$Ground == "M" & !NewData$Ground == "U"),]) # use to plot only the ecomorph species
 eco <- setNames(NewData[species,"Ground"], species)
+phylopca$S <- phylopca$S[species,]
 phylopca$S[,c(3)] <-  phylopca$S[,c(3)] *-1
-phylopca$S[,c(5)] <-  phylopca$S[,c(5)] *-1
+phylopca$S[,c(1)] <-  phylopca$S[,c(1)] *-1
+phylopca$S[,c(5)] <-  phylopca$S[,c(5)] *1
 ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species, 
                 groups = eco, labels = F, 
                 region = NewData[species,"Region"]),
@@ -104,168 +114,12 @@ ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species,
                 region = NewData[species,"Region"]),
           ggplot.pca(pca = phylopca, axis1 = 4, axis2 =3, species = species, 
                 groups = eco, labels = F, 
-                region = NewData[species,"Region"]) + 
-                scale_y_continuous(labels = scales::number_format(accuracy = 0.1)),
+                region = NewData[species,"Region"]),
           ggplot.pca(pca = phylopca, axis1 = 4, axis2 =5, species = species, 
                 groups = eco, labels = F, 
                 region = NewData[species,"Region"]),
           ncol =2,nrow =2)
-#ggsave(tail.phy.pc, filename = "PCA2.pdf",  bg = "transparent", height = 15, width = 15)
-#dev.off()
 
-
-# Species for Species Matching --------------------------------------------
-
-FiveIsland <- NewData %>%
-  filter(Country == "DR" | Country == "Haiti" | Country == "Puerto Rico" | 
-           Country == "Cuba" | Country == "Jamaica"| Region ==  "Mainland")
-FiveIsland <- cbind(FiveIsland[,1:5], phylopca$S[rownames(FiveIsland),])
-FiveIsland[which(FiveIsland$Country == "DR" | FiveIsland$Country == "Haiti"),"Country"] <- "Hispaniola"
-FiveIsland[which(FiveIsland$Region == "Caribbean"),"Region"] <- FiveIsland[which(FiveIsland$Region == "Caribbean"),"Country"]
-
-euc <- as.matrix(dist(FiveIsland[,6:10], method = "euclidean"))
-euc[which(euc == 0)] <- NA
-MainNND <- data.frame(FiveIsland[,c(1,4)], 
-                      Cuba.NND = NA,
-                      Jam.NND = NA,
-                      Hisp.NND = NA,
-                      PR.NND = NA,
-                      Main.NND = NA)
-for (i in 1:nrow(MainNND)) {
-  MainNND[i,"Cuba.NND"] <- min(euc[i,which(FiveIsland$Region == "Cuba")],na.rm = T)
-  MainNND[i,"Jam.NND"] <- min(euc[i,which(FiveIsland$Region == "Jamaica")],na.rm = T)
-  MainNND[i,"Hisp.NND"] <- min(euc[i,which(FiveIsland$Region == "Hispaniola")],na.rm = T)
-  MainNND[i,"PR.NND"] <- min(euc[i,which(FiveIsland$Region == "Puerto Rico")],na.rm = T)
-  MainNND[i,"Main.NND"] <- min(euc[i,which(FiveIsland$Region == "Mainland")],na.rm = T)
-}
-Cuba <- mean(unlist(MainNND[which(MainNND$Region == "Cuba"),c(7)]))
-Jam <- mean(unlist(MainNND[which(MainNND$Region == "Jamaica"),c(7)]))
-Hisp <- mean(unlist(MainNND[which(MainNND$Region == "Hispaniola"),c(7)]))
-PR <- mean(unlist(MainNND[which(MainNND$Region == "Puerto Rico"),c(7)]))
-Main <- (apply(MainNND[which(MainNND$Region == "Mainland"),c(3,4,5,6)],2,mean))
-totalmean <- mean(c(Cuba,Jam,Hisp,PR,Main));totalmean
-#totalmean <- mean(c(Cuba,Jam,Hisp,PR,apply(MainNND[,3:6],2,mean)))
-#totalmean <- Main
-
-
-
-fit1 <- fitContinuous(tree,setNames(phylopca$S[,1],rownames(phylopca$S))[tree$tip.label],model = "BM")
-fit2 <- fitContinuous(tree,setNames(phylopca$S[,2],rownames(phylopca$S))[tree$tip.label],model = "BM")
-fit3 <- fitContinuous(tree,setNames(phylopca$S[,3],rownames(phylopca$S))[tree$tip.label],model = "BM")
-fit4 <- fitContinuous(tree,setNames(phylopca$S[,4],rownames(phylopca$S))[tree$tip.label],model = "BM")
-fit5 <- fitContinuous(tree,setNames(phylopca$S[,5],rownames(phylopca$S))[tree$tip.label],model = "BM")
-totalsim <-matrix(NA,1000,1)
-for(y in 1:nrow(totalsim)) {
-  simNND <- data.frame(FiveIsland[,c(1,4)], 
-                       Cuba.NND = NA,
-                       Jam.NND = NA,
-                       Hisp.NND = NA,
-                       PR.NND = NA,
-                       Main.NND = NA)
-  simdata <- cbind(fastBM(tree, sig2 = fit1$opt$sigsq, nsim = 1),
-                   fastBM(tree, sig2 = fit2$opt$sigsq, nsim = 1),
-                   fastBM(tree, sig2 = fit3$opt$sigsq, nsim = 1),
-                   fastBM(tree, sig2 = fit4$opt$sigsq, nsim = 1),
-                   fastBM(tree, sig2 = fit5$opt$sigsq, nsim = 1)) # simulate data under BM
-  sim.euc <- as.matrix(dist(simdata[FiveIsland$Species,], method = "euclidean"))
-  sim.euc[which(sim.euc == 0)] <- NA
-  for (i in 1:nrow(sim.euc)) {
-    simNND[i,"Cuba.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Cuba")], na.rm = T)
-    simNND[i,"Jam.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Jamaica")], na.rm = T)
-    simNND[i,"Hisp.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Hispaniola")], na.rm = T)
-    simNND[i,"PR.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Puerto Rico")], na.rm = T)
-    simNND[i,"Main.NND"] <- min(sim.euc[i,which(FiveIsland$Region ==  "Mainland")], na.rm = T)
-  }
-  simCuba <- mean(unlist(simNND[which(simNND$Region == "Cuba"), c(7)]))
-  simJam <- mean(unlist(simNND[which(simNND$Region == "Jamaica"), c(7)]))
-  simHisp <- mean(unlist(simNND[which(simNND$Region == "Hispaniola"), c(7)]))
-  simPR <- mean(unlist(simNND[which(simNND$Region == "Puerto Rico"), c(7)]))
-  simMain <- (apply(simNND[which(simNND$Region == "Mainland"), c(3,4,5,6)],2,mean))
-  #totalsim[y] <- mean(c(simCuba,simJam,simHisp,simPR))
-  totalsim[y] <- mean(c(simCuba,simJam,simHisp,simMain))
-}
-quantile(c(totalsim),.05)
-totalmean
-which(!is.na(match(sort(c(totalmean,totalsim)),totalmean)))/1000
-
-hist(c(totalsim,totalmean))
-abline(v = totalmean, col = "red", lwd = 2)
-
-
-#RESULTS - it really matters whether you compare a species to the same species or a random one.
-# Former is super sig but the later is really not sig
-# I think former is correct 
-
-
-# L1OU --------------------------------------------------------------------
-
-lizard <- adjust_data(tree,phylopca$S[tree$tip.label,1:5])
-
-fit_ind <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 6, criterion = "pBIC")
-#saveRDS(fit_ind, "Outputs/shift_config_pBIC_MRCT.rds")
-fit_ind <- readRDS("Outputs/shift_config_AIC_MRCT.rds")
-
-fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "AIC", nCores = 4)
-#saveRDS(fit_conv, "Outputs/convergent_regime_AIC_MRCT.rds")
-fit_conv <- readRDS("Outputs/convergent_regime_AIC_MCC.rds")
-
-optima <- data.frame(fit_conv$optima)
-colnames(optima) <- c("PC1","PC2","PC3","PC4","PC5")
-optima<-distinct(optima, PC1,.keep_all = T)
-optima$col <- NewData[rownames(optima),"Ground"]
-optima["vermiculatus","col"] <- "CG"
-optima["altavelensis","col"] <- "Tr"
-optima["barbatus","col"] <- "Tw"
-optima2 <- optima[which(!rownames(optima) == "luteogularis" & !rownames(optima) == "pinchoti") ,]
-#optima2 <- optima[which(!rownames(optima) == "salvini" & !rownames(optima) == "noblei") ,]
-#optima2["auratus","col"] <- "G"
-#optima2["omiltemanus","col"] <- "TC"
-
-
-
-
-ggplot(as.data.frame(phylopca$S), aes(x = PC1,y=PC2)) +
-  geom_point(aes(fill = NewData$Ground), col = "black",shape =21, size = 2) +
-  scale_fill_manual(values = col) +
-  geom_point(data = as.data.frame(optima2), aes(x = PC1, y = PC2, fill = col), size = 4, shape = 21)+
-  theme_classic()
-
-dev.off()
-plot(fit_conv,edge.shift.ann = F,plot.bar = F,  asterisk = T, cex = 0.5)
-edgelabels(edge = c(300, 135),cex =0.5,frame = "none")
-
-fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind,nItrs = 100, multicore = T, nCores=6)
-saveRDS(fit_ind_AIC_bootstrap, "Outputs/shift_bootstrap_AIC_MCC.rds")
-#regime 1 - luteogularis
-#regime 10 - trunk anoles
-#regime 11 - olssoni & auratus
-#regime 12 - barahone & nobeli & vermiculatus
-#regime 13 - petersii & biporcatus
-#regime 14 - chrysolepis & gracilipes
-#regime 15 - second major Draconura shift and etheridgei
-#regime 16 - first major Draconura shift
-#regime 2 - darlingtoni & big twig
-#regime 3 - 4 twig regimes
-#regime 4 - 3 GB regimes
-#regime 5 - pinchoti
-#regime 6 - other GB with koopmani
-#regime 7 - mainland twig & angusticeps
-#regime 8 - two TC regimes
-#regime 9 - onca & lionotus/oxylophus
-
-#regime 1 - omiltemanus & ortonii & coelestinus
-#regime 10 - 4 GB regimes
-#regime 11 - 1 TC regime
-#regime 12 - lionotus
-#regime 13 - major Draconura radiation
-#regime 2 - 4 twig regimes
-#regime 3 - 4 twig regimes
-#regime 4 - 1 GB regime
-#regime 5 - salvini
-#regime 6 - chrysolepis and gracilipes
-#regime 7 - big twig and darlingtoni
-#regime 8 - two trunk + eugenegrahami
-#regime 9 - angusticeps and mainland twig
 
 
 # DFA w/ Caribbean --------------------------------------------------------
@@ -307,8 +161,8 @@ criteria.lda.trim <- as.data.frame(criteria.lda.trim[which(!is.na(criteria.lda.t
 
 tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],
        criteria.lda.trim$Ecomorph[which(criteria.lda.trim$Ecomorph == "M" | criteria.lda.trim$Ecomorph == "U")],length)
-tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
-       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],length)
+tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "U")],
+       criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "U")],length)
 
 
 
@@ -398,10 +252,22 @@ for (i in 1:nrow(intermediate)) {
   }
 }
 intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
-intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C3","Match")]
+intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C2","C3","Match")]
 intermediate
 
 tapply(intermediate[which(intermediate$Ecomorph == "M"), "Match"],intermediate[which(intermediate$Ecomorph == "M"), "Match"],length)
+
+intermediate.value <- intermediate
+for(i in 1:nrow(intermediate.value)) {
+  species <- intermediate.value[i,"Species"]
+  eco1 <- str_split(intermediate[species,],"/")[[3]][1]
+  eco2 <- str_split(intermediate[species,],"/")[[3]][2]
+  intermediate.value[species,"DFA"] <- paste0(round(as.numeric(noclass[species,eco1]),2),"/",round(as.numeric(noclass[species,eco2]),2))
+  intermediate.value[species,"C1"] <- paste0(round(as.numeric(criteria1[species,eco1]),2),"/",round(as.numeric(criteria1[species,eco2]),2))
+  intermediate.value[species,"C2"] <- paste0(round(as.numeric(criteria2[species,eco1]),2),"/",round(as.numeric(criteria2[species,eco2]),2))
+  intermediate.value[species,"C3"] <- paste0(round(as.numeric(criteria3[species,eco1]),2),"/",round(as.numeric(criteria3[species,eco2]),2))
+}
+intermediate.value
 
 # this is for later to do the simmap
 simmap.eco <- setNames(NewData$Ecomorph,NewData$Species)
@@ -442,7 +308,7 @@ predictions <- predict(LDA, as.data.frame(NewData[which(NewData$Ground == "M" | 
 
 criteria.lda <- cbind(Species = rownames(predictions$x), 
                       Ecomorph = as.character(NewData$Ground[which(NewData$Ground == "M" | NewData$Ground == "U")]),
-                      round(predictions$posterior,2), 
+                      round(predictions$posterior,3), 
                       Pred.Eco = as.character(predictions$class))
 
 #removes species with post prob <90
@@ -468,7 +334,7 @@ tapply(criteria.lda.trim$Pred.Eco[which(criteria.lda.trim$Ecomorph == "M")],
 
 predicted <- ED.predict(scores = phylopca$S[,1:5], species = tree$tip.label, 
                            groups = NewData[tree$tip.label,"Ground"],
-                           hard.mode = T, all.species = F)
+                           hard.mode = T, all.species = T)
 criteria1 <- predicted$criteria1
 tapply(criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],criteria1$Pred.Eco[which(criteria1$Ecomorph=="M")],length)
 criteria2 <- predicted$criteria2
@@ -531,9 +397,6 @@ Pred.Eco2 <- data.frame(Species = NewData$Species, Pred.Eco = NewData$Ground)
 rownames(Pred.Eco2) <- Pred.Eco2$Species
 Pred.Eco2[!is.na(match(Pred.Eco2$Species,compile2$Species)),2] <- compile2$Predicted
 
-ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = tree$tip.label, 
-           groups = Pred.Eco2$Pred.Eco, labels = FALSE)
-
 # Intermediate w/Ground --------------------------------------------------
 noclass <- as.data.frame(criteria.lda[is.na(match(criteria.lda[,1],new.compile2[,1])),])
 intermediate <- cbind(noclass[,c("Species","Ecomorph")],"DFA"=NA,"C1"=NA,"C2"=NA,"C3"=NA,"Match" =NA)
@@ -595,12 +458,23 @@ for (i in 1:nrow(intermediate)) {
   }
 }
 intermediate <- filter(intermediate, str_detect(intermediate$DFA, "/"))
-intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C3","Match")]
+intermediate <- intermediate[!is.na(intermediate$Match),c("Species","Ecomorph","DFA","C1","C2","C3","Match")]
 intermediate <- intermediate[is.na(match(intermediate$Species,new.compile2$Species)),]
 intermediate
 
 tapply(intermediate[which(intermediate$Ecomorph == "M"), "Match"],intermediate[which(intermediate$Ecomorph == "M"), "Match"],length)
 
+intermediate.value <- intermediate
+for(i in 1:nrow(intermediate.value)) {
+  species <- intermediate.value[i,"Species"]
+  eco1 <- str_split(intermediate[species,],"/")[[3]][1]
+  eco2 <- str_split(intermediate[species,],"/")[[3]][2]
+  intermediate.value[species,"DFA"] <- paste0(round(as.numeric(noclass[species,eco1]),2),"/",round(as.numeric(noclass[species,eco2]),2))
+  intermediate.value[species,"C1"] <- paste0(round(as.numeric(criteria1[species,eco1]),2),"/",round(as.numeric(criteria1[species,eco2]),2))
+  intermediate.value[species,"C2"] <- paste0(round(as.numeric(criteria2[species,eco1]),2),"/",round(as.numeric(criteria2[species,eco2]),2))
+  intermediate.value[species,"C3"] <- paste0(round(as.numeric(criteria3[species,eco1]),2),"/",round(as.numeric(criteria3[species,eco2]),2))
+}
+intermediate.value
 
 # this is for later to do the simmap
 simmap.eco2 <- setNames(NewData$Ground,NewData$Species)
@@ -621,10 +495,10 @@ for (i in 1:nrow(intermediate)) {
 
 Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground,as.data.frame(phylopca$S)) %>%
   filter(., !Ecomorph == "M" & !Ecomorph == "U")
-#Ecomorph.Scores <- NewData[,-c(1:2,4,18:19)] %>%
-#  filter(., !Ground == "M" & !Ground == "U")
+Ecomorph.Scores <- cbind("Ecomorph" = NewData$Ground, NewData[,c(6:18)]) %>%
+  filter(., !Ecomorph == "M" & !Ecomorph == "U")
 
-bon <- posthoc.cross(Ecomorph.Scores, axes = 5, fun = "random.dist", p.adj = "bonferroni", nsim = 1000)
+bon <- posthoc.cross(Ecomorph.Scores, axes = 13, fun = "random.dist", p.adj = "bonferroni", nsim = 1000)
 
 # Simulated Trait Data ----------------------------------------------------
 
@@ -665,19 +539,22 @@ class(hundotrees) <- "multiPhylo"
 simeco <- simmap.eco2
 simeco.col <- simmap.col2
 
-post.sim<-make.simmap(tree,simmap.eco,model = "SYM",nsim = 1000)
-write.simmap(post.sim, "Outputs/SIMMAP_SYM_Caribbean_MRCT.txt", append = TRUE, version = 1.0)
+post.sim<-make.simmap(hundotrees,simeco,model = "SYM",nsim = 100)
+write.simmap(post.sim, "Outputs/TooBig/SIMMAP_SYM_Ground_postburnin_NEW.txt", append = TRUE, version = 1.0)
 #write.simmap(post.sim1, "Outputs/SIMMAP_SYM_Ground_MCC.txt", append = TRUE, version = 1.0)
 
-#post.sim <- read.simmap("Outputs/SIMMAP_SYM_Ground_postburnin.txt", format="phylip",version =1.0)
+post.sim <- read.simmap("Outputs/TooBig/SIMMAP_SYM_Caribbean_postburnin.txt", format="phylip",version =1.0)
 #class(post.sim) <- "multiPhylo"
 
 simmap.tree<-lapply(post.sim,drop.tip.simmap,NewData$Species[which(!NewData$Region == "Mainland")])
 class(simmap.tree) <- "multiPhylo"
 pd<-describe.simmap(simmap.tree, plot = FALSE, ref.tree = Mainland.tree)
+#write_rds(pd, "Outputs/TooBig/SIMMAP_SYM_Ground_post_PD_NEW.rds")
+pd <- read_rds("Outputs/TooBig/SIMMAP_SYM_Ground_post_PD_NEW.rds")
+
 
 transitions <- pd$count
-transition.type <- (",CG$")
+transition.type <- (",G$")
 tapply(apply(transitions[,grep(transition.type, colnames(transitions))],1,sum),
        apply(transitions[,grep(transition.type, colnames(transitions))],1,sum),length)
 
@@ -709,3 +586,536 @@ colnames(dat) <- c("species","focal","PC1","PC2","PC3","PC4","PC5")
 conv <- windex(dat[Mainland.tree$tip.label,], Mainland.tree, c(3:7), SE = FALSE);conv
 cov.text <- test.windex(dat[Mainland.tree$tip.label,], Mainland.tree, c(3:7),reps = 1000, SE = FALSE);cov.text
 
+
+# C Tests -----------------------------------------------------------------
+
+traits <- as.matrix(phylopca$S[which(Pred.Eco$Region == "Mainland"),1:5])
+convtips <- Pred.Eco2[which(Pred.Eco$Region == "Mainland" & Pred.Eco2$Pred.Eco == "GB"),"Species"]
+convSig(Mainland.tree,traits,convtips,nsim =1000)
+
+# Species for Species Matching --------------------------------------------
+
+FiveIsland <- NewData %>%
+  filter(Country == "DR" | Country == "Haiti" | Country == "Puerto Rico" | 
+           Country == "Cuba" | Country == "Jamaica"| Region ==  "Mainland")
+FiveIsland <- cbind(FiveIsland[,1:5], phylopca$S[rownames(FiveIsland),])
+FiveIsland[which(FiveIsland$Country == "DR" | FiveIsland$Country == "Haiti"),"Country"] <- "Hispaniola"
+FiveIsland[which(FiveIsland$Region == "Caribbean"),"Region"] <- FiveIsland[which(FiveIsland$Region == "Caribbean"),"Country"]
+
+euc <- as.matrix(dist(FiveIsland[,6:10], method = "euclidean"))
+euc[which(euc == 0)] <- NA
+MainNND <- data.frame(FiveIsland[,c(1,4)], 
+                      Cuba.NND = NA,
+                      Jam.NND = NA,
+                      Hisp.NND = NA,
+                      PR.NND = NA,
+                      Main.NND = NA)
+for (i in 1:nrow(MainNND)) {
+  MainNND[i,"Cuba.NND"] <- min(euc[i,which(FiveIsland$Region == "Cuba")],na.rm = T)
+  MainNND[i,"Jam.NND"] <- min(euc[i,which(FiveIsland$Region == "Jamaica")],na.rm = T)
+  MainNND[i,"Hisp.NND"] <- min(euc[i,which(FiveIsland$Region == "Hispaniola")],na.rm = T)
+  MainNND[i,"PR.NND"] <- min(euc[i,which(FiveIsland$Region == "Puerto Rico")],na.rm = T)
+  MainNND[i,"Main.NND"] <- min(euc[i,which(FiveIsland$Region == "Mainland")],na.rm = T)
+}
+Cuba <- mean(unlist(MainNND[which(MainNND$Region == "Cuba"),c(4,5,6,7)]))
+#Cuba <- mean(unlist(MainNND[which(MainNND$Region == "Cuba"),c(7)]))
+Jam <- mean(unlist(MainNND[which(MainNND$Region == "Jamaica"),c(3,5,6,7)]))
+#Jam <- mean(unlist(MainNND[which(MainNND$Region == "Jamaica"),c(7)]))
+Hisp <- mean(unlist(MainNND[which(MainNND$Region == "Hispaniola"),c(3,4,6,7)]))
+#Hisp <- mean(unlist(MainNND[which(MainNND$Region == "Hispaniola"),c(7)]))
+PR <- mean(unlist(MainNND[which(MainNND$Region == "Puerto Rico"),c(3,4,5,7)]))
+#PR <- mean(unlist(MainNND[which(MainNND$Region == "Puerto Rico"),c(7)]))
+Main <- mean(unlist(MainNND[which(MainNND$Region == "Mainland"),c(3,4,5,6)]))
+#Main <- apply((MainNND[which(MainNND$Region == "Mainland"),c(3,4,5,6)]),2,mean)
+
+totalmean <- mean(c(Cuba,Jam,Hisp,PR));totalmean
+Carmean <- mean(c(Cuba,Jam,Hisp,PR))
+Mainmean <- mean(Main)
+#totalmean <- mean(c(Cuba,Jam,Hisp,PR,apply(MainNND[,3:6],2,mean)))
+#totalmean <- Main
+
+
+
+fit1 <- fitContinuous(tree,setNames(phylopca$S[,1],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit2 <- fitContinuous(tree,setNames(phylopca$S[,2],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit3 <- fitContinuous(tree,setNames(phylopca$S[,3],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit4 <- fitContinuous(tree,setNames(phylopca$S[,4],rownames(phylopca$S))[tree$tip.label],model = "BM")
+fit5 <- fitContinuous(tree,setNames(phylopca$S[,5],rownames(phylopca$S))[tree$tip.label],model = "BM")
+totalsim <-matrix(NA,1000,1)
+Carsim <-matrix(NA,1000,1)
+Mainsim <-matrix(NA,1000,1)
+for(y in 1:nrow(totalsim)) {
+  simNND <- data.frame(FiveIsland[,c(1,4)], 
+                       Cuba.NND = NA,
+                       Jam.NND = NA,
+                       Hisp.NND = NA,
+                       PR.NND = NA,
+                       Main.NND = NA)
+  simdata <- cbind(fastBM(tree, sig2 = fit1$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit2$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit3$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit4$opt$sigsq, nsim = 1),
+                   fastBM(tree, sig2 = fit5$opt$sigsq, nsim = 1)) # simulate data under BM
+  sim.euc <- as.matrix(dist(simdata[FiveIsland$Species,], method = "euclidean"))
+  sim.euc[which(sim.euc == 0)] <- NA
+  for (i in 1:nrow(sim.euc)) {
+    simNND[i,"Cuba.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Cuba")], na.rm = T)
+    simNND[i,"Jam.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Jamaica")], na.rm = T)
+    simNND[i,"Hisp.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Hispaniola")], na.rm = T)
+    simNND[i,"PR.NND"] <- min(sim.euc[i,which(FiveIsland$Region == "Puerto Rico")], na.rm = T)
+    simNND[i,"Main.NND"] <- min(sim.euc[i,which(FiveIsland$Region ==  "Mainland")], na.rm = T)
+  }
+  simCuba <- mean(unlist(simNND[which(simNND$Region == "Cuba"), c(4,5,6)]))
+  #simCuba <- mean(unlist(simNND[which(simNND$Region == "Cuba"), c(7)]))
+  simJam <- mean(unlist(simNND[which(simNND$Region == "Jamaica"), c(3,5,6)]))
+  #simJam <- mean(unlist(simNND[which(simNND$Region == "Jamaica"), c(7)]))
+  simHisp <- mean(unlist(simNND[which(simNND$Region == "Hispaniola"), c(3,4,6)]))
+  #simHisp <- mean(unlist(simNND[which(simNND$Region == "Hispaniola"), c(7)]))
+  simPR <- mean(unlist(simNND[which(simNND$Region == "Puerto Rico"), c(3,4,5)]))
+  #simPR <- mean(unlist(simNND[which(simNND$Region == "Puerto Rico"), c(7)]))
+  simMain <- mean(unlist(simNND[which(simNND$Region == "Mainland"), c(3,4,5,6)]))
+  #simMain <- apply((simNND[which(simNND$Region == "Mainland"), c(3,4,5,6)]),2,mean)
+  
+  
+  totalsim[y] <- mean(c(simCuba,simJam,simHisp,simPR))
+  Carsim[y] <- mean(c(simCuba,simJam,simHisp,simPR))
+  Mainsim[y] <- mean(simMain)
+}
+quantile(c(totalsim),.05)
+totalmean
+which(!is.na(match(sort(c(totalmean,totalsim)),totalmean)))/1000
+
+hist(c(totalsim,totalmean))
+abline(v = totalmean, col = "red", lwd = 2)
+
+quantile(c(Carsim),.05)
+Carmean
+which(!is.na(match(sort(c(Carmean,Carsim)),Carmean)))/1000
+
+quantile(c(Mainsim),.05)
+Mainmean
+which(!is.na(match(sort(c(Mainmean,Mainsim)),Mainmean)))/1000
+
+#RESULTS - it really matters whether you compare a species to the same species or a random one.
+# Former is super sig but the later is really not sig
+# I think former is correct 
+
+
+
+# L1OU --------------------------------------------------------------------
+
+lizard <- adjust_data(tree,phylopca$S[tree$tip.label,1:5])
+
+#fit_ind <- estimate_shift_configuration(lizard$tree,lizard$Y, nCores = 6, criterion = "AIC")
+#saveRDS(fit_ind, "Outputs/shift_config_AIC_MCC.rds")
+fit_ind <- readRDS("Outputs/shift_config_AIC_MCC.rds")
+
+#fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "AIC", nCores = 4)
+#saveRDS(fit_conv, "Outputs/convergent_regime_AIC_MCC.rds")
+fit_conv <- readRDS("Outputs/convergent_regime_AIC_MCC.rds")
+
+#fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind,nItrs = 100, multicore = T, nCores=4)
+#saveRDS(fit_ind_AIC_bootstrap, "Outputs/shift_bootstrap_AIC_MCC.rds")
+bootstrap <- readRDS("Outputs/shift_bootstrap_AIC_MCC.rds")
+
+BS_constrained_pBIC_all_data <- round(bootstrap[[1]] * 100,digits=1)
+BS_constrained_pBIC_all_data <- ifelse(BS_constrained_pBIC_all_data>50,  paste0(BS_constrained_pBIC_all_data,""), NA)
+BS_constrained_pBIC_all_data[setdiff(1:nrow(fit_conv$tree$edge),as.numeric(fit_conv$shift.configuration))] <- NA
+
+ann <- setNames(bootstrap$detection.rate[fit_ind$shift.configuration], fit_ind$shift.configuration)
+
+
+pal <-c(fit_ind$shift.configuration,'darkgrey')
+pal[!is.na(match(pal,396))] <- "#009EFF"
+pal[!is.na(match(pal,268))] <- "Red"
+pal[!is.na(match(pal,c(182, 355)))] <- "#FFBB05"
+pal[!is.na(match(pal,c(402, 334, 399)))] <- "Blue"
+pal[!is.na(match(pal,c(161, 117)))] <- "#3D6CD7" #col_vector[1]
+pal[!is.na(match(pal,c(123, 176)))] <- "cyan"
+pal[!is.na(match(pal,c(94, 345)))] <- "#31FEAD" #col_vector[2]
+pal[!is.na(match(pal,c(192)))] <- "#FF96B4" #col_vector[3]
+pal[!is.na(match(pal,c(341, 383)))] <- "#C47DF9"
+pal[!is.na(match(pal,c(405, 305, 346, 203)))] <-  "#560097"
+pal[!is.na(match(pal,c(319, 260, 213)))] <- "Gold"
+pal[!is.na(match(pal,c(206)))] <-"#CFFD56" #col_vector[4]
+pal[!is.na(match(pal,c(384)))] <- "#E9DF0E"
+pal[!is.na(match(pal,c(320, 153)))] <- "#9D19FF"
+pal[!is.na(match(pal,c(286, 389)))] <- "forestgreen"
+pal[!is.na(match(pal,c(179, 14)))] <-"#FF7A24" #col_vector[5]
+
+
+
+plot(fit_conv, edge.ann.cex = .5, edge.label.ann=F,
+     cex=0.25,label.offset=0.01, 
+     show.tip.label=T, plot.bar=F, edge.shift.ann=F,bar.axis=F, 
+     edge.label.adj=1.5, asterisk=F, edge.width=1.75, palette = pal)
+group <- setNames(Pred.Eco2$Pred.Eco,Pred.Eco2$Species)
+group[which(group == "U")] <- "M"
+tiplabels(pch=21,frame="none",bg=col[group[fit_conv$tree$tip.label]],cex=.4)
+
+Z = l1ou:::generate_design_matrix(fit_conv$tree, type = "apprX")
+for (idx in as.numeric(names(which(ann >=0.95)))) {
+  pos = max(Z[, idx])
+  edgelabels(edge = idx, pch = 21, cex = 1.2, col = "black", bg = "black",
+             adj = c(0.5, 0.8), frame = "none", date = pos)
+}
+for (idx in as.numeric(names(which(ann < 0.95 & ann >=0.75)))) {
+  pos = max(Z[, idx])
+  edgelabels(edge = idx, pch = 21, cex = 1.2, col = "black", bg = "darkgrey",
+             adj = c(0.5, 0.8), frame = "none", date = pos)
+}
+for (idx in as.numeric(names(which(ann < 0.75)))) {
+  pos = max(Z[, idx])
+  edgelabels(edge = idx, pch = 21, cex = 1.2, col = "black", bg = "white",
+             adj = c(0.5, 0.8), frame = "none", date = pos)
+}
+
+
+#regime 1 - luteogularis
+#regime 10 - trunk anoles
+#regime 11 - olssoni & auratus
+#regime 12 - barahone & nobeli & vermiculatus
+#regime 13 - petersii & biporcatus
+#regime 14 - chrysolepis & gracilipes
+#regime 15 - second major Draconura shift and etheridgei
+#regime 16 - first major Draconura shift
+#regime 2 - darlingtoni & big twig
+#regime 3 - 4 twig regimes
+#regime 4 - 3 GB regimes
+#regime 5 - pinchoti
+#regime 6 - other GB with koopmani
+#regime 7 - mainland twig & angusticeps
+#regime 8 - two TC regimes
+#regime 9 - onca & lionotus/oxylophus
+
+
+fit_ind <- readRDS("Outputs/shift_config_AIC_MRCT.rds")
+
+#fit_conv <- estimate_convergent_regimes(fit_ind, criterion = "AIC", nCores = 4)
+#saveRDS(fit_conv, "Outputs/convergent_regime_AIC_MRCT.rds")
+fit_conv <- readRDS("Outputs/convergent_regime_AIC_MRCT.rds")
+
+#fit_ind_AIC_bootstrap <- l1ou_bootstrap_support(fit_ind,nItrs = 100, multicore = T, nCores=4)
+#saveRDS(fit_ind_AIC_bootstrap, "Outputs/shift_bootstrap_AIC_MRCT.rds")
+bootstrap <- readRDS("Outputs/shift_bootstrap_AIC_MRCT.rds")
+
+BS_constrained_pBIC_all_data <- round(bootstrap[[1]] * 100,digits=1)
+BS_constrained_pBIC_all_data <- ifelse(BS_constrained_pBIC_all_data>50,  paste0(BS_constrained_pBIC_all_data,""), NA)
+BS_constrained_pBIC_all_data[setdiff(1:nrow(fit_conv$tree$edge),as.numeric(fit_conv$shift.configuration))] <- NA
+
+ann <- setNames(bootstrap$detection.rate[fit_ind$shift.configuration], fit_ind$shift.configuration)
+
+
+pal <-c(fit_ind$shift.configuration,'darkgrey')
+pal[!is.na(match(pal,c(353,75,116)))] <- "ForestGreen"
+pal[!is.na(match(pal,c(299,189,223,332)))] <- "Gold"
+pal[!is.na(match(pal,c(274)))] <- 3
+pal[!is.na(match(pal,c(11)))] <- "#FF7A24"
+pal[!is.na(match(pal,c(76)))] <- "#31FEAD" #col_vector[1]
+pal[!is.na(match(pal,c(183,369,279,330)))] <- "Purple4"
+pal[!is.na(match(pal,c(354)))] <- "#E9DF0E" #col_vector[2]
+pal[!is.na(match(pal,c(356)))] <- "Blue" #col_vector[3]
+pal[!is.na(match(pal,c(139)))] <- "pink"
+pal[!is.na(match(pal,c(171,103)))] <-  "cyan"
+pal[!is.na(match(pal,c(321, 341)))] <- "#C47DF9"
+pal[!is.na(match(pal,c(311,241,283)))] <-"Red" #col_vector[4]
+pal[!is.na(match(pal,c(300,135)))] <- "#9D19FF"
+
+
+plot(fit_conv, edge.ann.cex = .5, edge.label.ann=F,
+     cex=0.25,label.offset=0.01, 
+     show.tip.label=T, plot.bar=F, edge.shift.ann=F,bar.axis=F, 
+     edge.label.adj=1.5, asterisk=F, edge.width=1.75, palette = pal)
+group <- setNames(Pred.Eco2$Pred.Eco,Pred.Eco2$Species)
+group[which(group == "U")] <- "M"
+tiplabels(pch=21,frame="none",bg=col[group[fit_conv$tree$tip.label]],cex=.4)
+
+Z = l1ou:::generate_design_matrix(fit_conv$tree, type = "apprX")
+for (idx in as.numeric(names(which(ann >=0.95)))) {
+  pos = max(Z[, idx])
+  edgelabels(edge = idx, pch = 21, cex = 1.2, col = "black", bg = "black",
+             adj = c(0.5, 0.8), frame = "none", date = pos)
+}
+for (idx in as.numeric(names(which(ann < 0.95 & ann >=0.75)))) {
+  pos = max(Z[, idx])
+  edgelabels(edge = idx, pch = 21, cex = 1.2, col = "black", bg = "darkgrey",
+             adj = c(0.5, 0.8), frame = "none", date = pos)
+}
+for (idx in as.numeric(names(which(ann < 0.75)))) {
+  pos = max(Z[, idx])
+  edgelabels(edge = idx, pch = 21, cex = 1.2, col = "black", bg = "white",
+             adj = c(0.5, 0.8), frame = "none", date = pos)
+}
+
+
+
+#regime 1 - omiltemanus & ortonii & coelestinus
+#regime 10 - 4 GB regimes
+#regime 11 - 1 TC regime
+#regime 12 - lionotus
+#regime 13 - major Draconura radiation
+#regime 2 - 4 twig regimes
+#regime 3 - 1 GB regime
+#regime 4 - nobeli
+#regime 5 - salvini
+#regime 6 - chrysolepis and gracilipes
+#regime 7 - big twig and darlingtoni
+#regime 8 - two trunk + eugenegrahami
+#regime 9 - angusticeps and mainland twig
+#
+optima <- data.frame(fit_conv$optima)
+colnames(optima) <- c("PC1","PC2","PC3","PC4","PC5")
+optima<-distinct(optima, PC1,.keep_all = T)
+optima$col <- NewData[rownames(optima),"Ground"]
+optima["vermiculatus","col"] <- "CG"
+optima["altavelensis","col"] <- "Tr"
+optima["barbatus","col"] <- "Tw"
+optima2 <- optima[which(!rownames(optima) == "luteogularis" & !rownames(optima) == "pinchoti") ,]
+#optima2 <- optima[which(!rownames(optima) == "salvini" & !rownames(optima) == "noblei") ,]
+#optima2["auratus","col"] <- "G"
+#optima2["omiltemanus","col"] <- "TC"
+
+
+
+
+ggplot(as.data.frame(phylopca$S), aes(x = PC1,y=PC2)) +
+  geom_point(aes(fill = NewData$Ground), col = "black",shape =21, size = 2) +
+  scale_fill_manual(values = col) +
+  geom_point(data = as.data.frame(optima2), aes(x = PC1, y = PC2, fill = col), size = 4, shape = 21)+
+  theme_classic()
+
+
+
+####PLOT SIMMAP####
+simmap.eco.max <- setNames(c(1:nrow(simmap.eco)), rownames(simmap.eco))
+for (i in 1:length(simmap.eco.max)) {
+  simmap.eco.max[i] <- colnames(simmap.eco)[which(simmap.eco[i,] ==  max(simmap.eco[i,]))]
+}
+
+CG<- names(which(simmap.eco.max[Mainland.tree$tip.label] == "CG"))
+GB<- names(which(simmap.eco.max[Mainland.tree$tip.label] == "GB"))
+TR<- names(which(simmap.eco.max[Mainland.tree$tip.label] == "Tr"))
+TC<- names(which(simmap.eco.max[Mainland.tree$tip.label] == "TC"))
+TG<- names(which(simmap.eco.max[Mainland.tree$tip.label] == "TG"))
+TW<- names(which(simmap.eco.max[Mainland.tree$tip.label] == "Tw"))
+
+coltree <- Mainland.tree2
+coltree$maps <- NULL
+tt<-paintBranches(coltree,edge=sapply(CG,match,coltree$tip.label),
+                  state="CG",anc.state="U")
+tt<-paintBranches(tt,edge=sapply(GB,match,coltree$tip.label),
+                  state="GB")
+tt<-paintBranches(tt,edge=sapply(TR,match,coltree$tip.label),
+                  state="Tr")
+tt<-paintBranches(tt,edge=sapply(TC,match,coltree$tip.label),
+                  state="TC")
+tt<-paintBranches(tt,edge=sapply(TG,match,coltree$tip.label),
+                  state="TG")
+tt<-paintBranches(tt,edge=sapply(TW,match,coltree$tip.label),
+                  state="Tw")
+
+
+simmap.eco2.max <- setNames(c(1:nrow(simmap.eco2)), rownames(simmap.eco2))
+for (i in 1:length(simmap.eco2.max)) {
+  simmap.eco2.max[i] <- colnames(simmap.eco2)[which(simmap.eco2[i,] ==  max(simmap.eco2[i,]))]
+}
+
+CG2<- names(which(simmap.eco2.max[Mainland.tree$tip.label] == "CG"))
+GB2<- names(which(simmap.eco2.max[Mainland.tree$tip.label] == "GB"))
+G2<- names(which(simmap.eco2.max[Mainland.tree$tip.label] == "G"))
+TR2<- names(which(simmap.eco2.max[Mainland.tree$tip.label] == "Tr"))
+TC2<- names(which(simmap.eco2.max[Mainland.tree$tip.label] == "TC"))
+TG2<- names(which(simmap.eco2.max[Mainland.tree$tip.label] == "TG"))
+TW2<- names(which(simmap.eco2.max[Mainland.tree$tip.label] == "Tw"))
+
+coltree2 <- Mainland.tree2
+coltree2$maps <- NULL
+tt2<-paintBranches(coltree,edge=sapply(CG2,match,coltree2$tip.label),
+                   state="CG",anc.state="U")
+tt2<-paintBranches(tt2,edge=sapply(GB2,match,coltree2$tip.label),
+                   state="GB")
+tt2<-paintBranches(tt2,edge=sapply(TR2,match,coltree2$tip.label),
+                   state="Tr")
+tt2<-paintBranches(tt2,edge=sapply(TC2,match,coltree2$tip.label),
+                   state="TC")
+tt2<-paintBranches(tt2,edge=sapply(TG2,match,coltree2$tip.label),
+                   state="TG")
+tt2<-paintBranches(tt2,edge=sapply(TW2,match,coltree2$tip.label),
+                   state="Tw")
+tt2<-paintBranches(tt2,edge=sapply(G2,match,coltree2$tip.label),
+                   state="G")
+plot(tt2,colors=simmap.col2,lwd=3,split.vertical=TRUE,ftype="i",fsize = 0.6, offset = 0.3)
+nodelabels(pie=pd3$ace,piecol=simeco.col2,cex=.6)
+tiplabels(pie=simmap.eco2[Mainland.tree$tip.label,],piecol=simmap.col2,cex=0.2)
+
+
+is_tip <- Mainland.tree2$edge[,2] <= length(Mainland.tree2$tip.label)
+ordered_tips <- Mainland.tree2$edge[is_tip, 2]
+Mainland.tree2$tip.label[ordered_tips]
+
+pdf(width = 7.5, height = 7.8)
+layout(matrix(1:3,1,3),widths=c(0.47,0.1,0.47))
+plot(tt,colors=simmap.col,lwd=3,split.vertical=TRUE,ftype = "off")
+nodelabels(pie=pd$ace,piecol=simmap.col,cex=.6)
+tiplabels(pie=simmap.eco[Mainland.tree2$tip.label,],piecol=simmap.col,cex=0.4)
+#legend("topleft", c("Crown-Giant","Grass-Bush","Ground","Trunk","Trunk-Crown","Trunk-Ground","Twig","Unclassified"), pch = 21, pt.bg = simmap.col2[c(1,3,2,6,4,5,7,8)], 
+#       pt.cex = 2.2, col = "black", bty ="n", cex = 1.1, y.intersp = 1, x.intersp = .8)
+plot.new()
+plot.window(xlim=c(0.1,-0.1),ylim=c(1, length(Mainland.tree2$tip.label)))
+par(cex=1)
+text(rep(0,length(Mainland.tree2$tip.label)), 1:length(Mainland.tree2$tip.label),Mainland.tree$tip.label[ordered_tips], cex = 0.5, font = 3)
+plot(tt2,colors=simmap.col2,lwd=3,split.vertical=TRUE,ftype="off",direction = "leftwards")
+nodelabels(pie=pd2$ace,piecol=simmap.col2,cex=.6)
+tiplabels(pie=simmap.eco2[Mainland.tree2$tip.label,],piecol=simmap.col2,cex=0.4)
+dev.off()
+
+
+# PLOT BOXPLOT ------------------------------------------------------------
+
+EcomorphData <- NewData[which(!NewData$Ground == "M" & !NewData$Ground == "U"),]
+ggarrange(ggbox(trait = "SVL", ylab = "Snout-vent Length"),
+          ggbox(trait = "TL", ylab = "Tail Length"),
+          ggbox(trait = "HL", ylab = "Head Length"),
+          ggbox(trait = "SL", ylab = "Snout Length"),
+          ggbox(trait = "HW", ylab = "Head Width"),
+          ggbox(trait = "Humerus", ylab = "Humerus Length"),
+          ggbox(trait = "Radius", ylab = "Radius Length"),
+          ggbox(trait = "Hand", ylab = "Hand Length"),
+          ggbox(trait = "Femur", ylab = "Femur Length"),
+          ggbox(trait = "Tibia", ylab = "Tibia Length"),
+          ggbox(trait = "Foot", ylab = "Foot Length"),
+          ggbox(trait = "Finger.III.W", ylab = "Fingerpad Width"),
+          ggbox(trait = "Toe.III.W", ylab = "Toepad Width"),
+          ggbox(trait = "Finger.III.Lam", ylab = "Fingerpad Lamellae"),
+          ggbox(trait = "Toe.III.Lam", ylab = "Toepad Lamellae"),
+          ncol = 3, nrow = 5)
+
+
+# PLOT PCA ROCK -----------------------------------------------------------
+
+
+col <- setNames(c("Blue","cyan", "Gold", "grey73", "ForestGreen", "tan4", "Red", "Purple4", "Darkorange1","Black","Pink"),c(sort(unique(NewData$Ground)),"RW","Rock"))
+
+rock.TG <- c("argenteolus","bartschi","lucius","longitibialis","taylori","gadovii","strahmi","armouri","shrevei")
+rock.G <- c("rupinae","monticola","barkeri","aquaticus","rivalis")
+
+phylopca <- phyl.pca(tree, NewData[tree$tip.label,6:18], method = "BM", mode = "cov")
+
+species <- rownames(phylopca$S[c(which(!NewData$Ground == "M" & !NewData$Ground == "U"),
+                                 which(!is.na(match(NewData$Species,rock.TG))),
+                                 which(!is.na(match(NewData$Species,rock.G)))),]) # use to plot only the ecomorph species
+eco <- setNames(NewData[species,"Ground"], species)
+eco[rock.TG] <- "RW"
+eco[rock.G] <- "Rock"
+phylopca$S <- phylopca$S[species,]
+phylopca$S[,c(3)] <-  phylopca$S[,c(3)] *-1
+phylopca$S[,c(1)] <-  phylopca$S[,c(1)] *-1
+phylopca$S[,c(5)] <-  phylopca$S[,c(5)] *1
+ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species, 
+                     groups = eco, labels = F, 
+                     region = NewData[species,"Region"]),
+          ggplot.pca(pca = phylopca, axis1 = 1, axis2 =3, species = species, 
+                     groups = eco, labels = F, 
+                     region = NewData[species,"Region"]),
+          ggplot.pca(pca = phylopca, axis1 = 4, axis2 =3, species = species, 
+                     groups = eco, labels = F, 
+                     region = NewData[species,"Region"]),
+          ggplot.pca(pca = phylopca, axis1 = 4, axis2 =5, species = species, 
+                     groups = eco, labels = F, 
+                     region = NewData[species,"Region"]),
+          ncol =2,nrow =2)
+
+bon <- posthoc.cross(rockscores, axes = 5, fun = "random.dist", p.adj = "bonferroni", nsim = 1000)
+rockscores <- cbind("Ecomorph"=eco,as.data.frame(phylopca$S[,1:5]))
+rockscores<-rockscores %>%
+  filter(Ecomorph == "G" | Ecomorph == "TG" | Ecomorph == "Rock" | Ecomorph == "RW")
+
+
+
+# Tanglegram --------------------------------------------------------------
+
+library(pvclust)
+library("NbClust")
+
+layout(matrix(1:2,1,2))
+EcomorphData <- NewData[which(!NewData$Ecomorph == "M" & !NewData$Ecomorph == "U"),]
+hm <- hclust(dist((EcomorphData[,6:18]),method = "euclidean"), method = "ward.D2", members = NULL)
+hm2 <- as.phylo(hm)
+plotTree(hm2,cex =0.5, offset = .3, fsize = 0.5, ftype = "i")
+tiplabels(bg = col[setNames(EcomorphData$Ecomorph,EcomorphData$Species)], pch = 21)
+
+EcomorphData <- NewData[which(!NewData$Ground == "M" & !NewData$Ground == "U"),]
+hm <- hclust(dist((EcomorphData[,6:18]),method = "euclidean"), method = "ward.D2", members = NULL)
+hm3 <- as.phylo(hm)
+plotTree(hm3,cex =0.5, offset = .3, fsize = 0.5, ftype = "i")
+tiplabels(bg = col[setNames(EcomorphData$Ground,EcomorphData$Species)], pch = 21)
+dev.off()
+
+hm <- hclust(dist((NewData[,6:18]),method = "euclidean"), method = "ward.D2", members = NULL)
+hm2 <- as.phylo(hm)
+plotTree(hm2,cex =0.5, offset = .3, fsize = 0.3, ftype = "i")
+var <- rect.hclust(hm, k=(10), border="red")
+
+tangle <- cophylo(ladderize(tree),ladderize(hm2))
+connect <- setNames(NewData$Region,NewData$Species)
+connect.col <- setNames(c(4,2,2),unique(connect))
+thick <- setNames(rep(1.5,205),NewData$Species); thick[which(NewData$Region == "Mainland")] <- 1.5
+line <- setNames(rep("solid",205),NewData$Species); line[which(NewData$Region == "Mainland")] <- "solid"
+
+
+left<-rep(4,nrow(tangle$trees[[1]]$edge))
+nodes<-getDescendants(tangle$trees[[1]],212)
+left[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[1]]$edge[,2])]<-
+  2
+nodes<-getDescendants(tangle$trees[[1]],309)
+left[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[1]]$edge[,2])]<-
+  2
+left[200] <- 2
+
+right<-rep("black",nrow(tangle$trees[[2]]$edge))
+nodes<-getDescendants(tangle$trees[[2]],392)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "Blue"
+nodes<-getDescendants(tangle$trees[[2]],376)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "Purple4"
+nodes<-getDescendants(tangle$trees[[2]],368)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "ForestGreen"
+nodes<-getDescendants(tangle$trees[[2]],334)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "Red"
+nodes<-getDescendants(tangle$trees[[2]],342)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "ForestGreen"
+nodes<-getDescendants(tangle$trees[[2]],300)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "tan4"
+nodes<-getDescendants(tangle$trees[[2]],269)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "Gold"
+nodes<-getDescendants(tangle$trees[[2]],211)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "cyan"
+nodes<-getDescendants(tangle$trees[[2]],233)
+right[sapply(nodes,function(x,y) which(y==x),y=tangle$trees[[2]]$edge[,2])]<-
+  "cyan"
+
+
+edge.col<-list(left=left,right=right)
+group <- setNames(Pred.Eco2$Pred.Eco,Pred.Eco2$Species)
+group[which(group == "U")] <- "M"
+#group <- setNames(NewData$Ground,NewData$Species)
+
+
+
+plot.cophylo(tangle, fsize = 0.3, 
+             link.lty = line[tangle$assoc[,1]], 
+             link.col = connect.col[connect[tangle$assoc[,1]]], 
+             link.lwd = thick[tangle$assoc[,1]],
+             tip.lty = "blank",
+             edge.col = edge.col, lwd = 1)
+tiplabels.cophylo(pch=19,frame="none",col=connect.col[connect[tangle$trees[[1]]$tip.label]],cex=.3)
+#tiplabels.cophylo(pie=simmap.eco2[tangle$trees[[2]]$tip.label,],piecol=simmap.col2,cex=0.07, which = "right")
+tiplabels.cophylo(pch=19,frame="none",col=col[group[tangle$trees[[2]]$tip.label]],cex=.3, which = "right")
+#nodelabels.cophylo(which="right", cex = 0.3)
