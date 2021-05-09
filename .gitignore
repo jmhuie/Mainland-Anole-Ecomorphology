@@ -10,3 +10,4 @@ Ignore/*
 .MainlandAnole_MainScript.R
 .MainlandAnole_Functions.R
 Data/MainlandAnole_MorphoData.xlsx
+Data/.DS_Store
