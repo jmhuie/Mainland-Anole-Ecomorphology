@@ -4,7 +4,7 @@
 .Ruserdata
 Trees/*
 Outputs/*
-.DS_Store
+..DS_Store
 Mahler_et_al_2013_Data/*
 Ignore/*
 .MainlandAnole_MainScript.R
