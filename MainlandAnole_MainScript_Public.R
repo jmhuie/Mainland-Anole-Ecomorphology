@@ -305,7 +305,7 @@ Pred.Eco[!is.na(match(Pred.Eco$Species,compile$Species)),"Pred.Eco"] <- compile$
 ##### Intermediate w/Caribbean ------------------------------------------------
 
 ## determine intermediate ecomorph classifications
-inter <- inter(DFA_predictions, compile)
+inter <- interEco(DFA_predictions, compile)
 
 ## breakdown of intermediate ecomorph classifications for Draconura species
 tapply(inter$inter.value[which(inter$inter$Ecomorph == "M"), "Match"],inter$inter.value[which(inter$inter$Ecomorph == "M"), "Match"],length)
@@ -470,7 +470,7 @@ Pred.Eco2[!is.na(match(Pred.Eco2$Species,new.compile2$Species)),"Pred.Eco"] <- n
 ##### Intermediate w/Ground --------------------------------------------------
 
 ## determine intermediate ecomorph classifications
-inter2 <- inter(DFA_predictions2, new.compile2)
+inter2 <- interEco(DFA_predictions2, new.compile2)
 
 ## breakdown of intermediate ecomorph classifications for Draconura species
 tapply(inter2$inter.value[which(inter2$inter$Ecomorph == "M"), "Match"],inter2$inter.value[which(inter2$inter$Ecomorph == "M"), "Match"],length)
