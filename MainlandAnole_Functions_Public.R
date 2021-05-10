@@ -208,8 +208,8 @@ ED.predict <- function(scores, species, groups, hard.mode = T, all.species = F) 
               compare = comb.compare))
 }
 
-###### Synthetic Compile #####
-synth.compile <- function(dfa, ed, hard.mode = T, upper.cut = 0.95, lower.cut = 0.9) {
+###### Compile DFA and ED Criteria #####
+Eco.Compile <- function(dfa, ed, hard.mode = T, upper.cut = 0.95, lower.cut = 0.9) {
   compilation <- matrix(0,0,7)
   other <- matrix(0,0,6)
   criteria.lda <- as.matrix(dfa)
