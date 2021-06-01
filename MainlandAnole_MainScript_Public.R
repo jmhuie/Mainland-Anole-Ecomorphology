@@ -106,7 +106,7 @@ ggarrange(ggplot.pca(pca = phylopca, axis1 = 1, axis2 =2, species = species,
                 groups = eco, labels = F, 
                 region = NewData[species,"Region"]),
           ncol =2,nrow =2)
-dev.off()
+#dev.off()
 
 
 # . -----------------------------------------------------------------------
@@ -645,7 +645,7 @@ plot(tt2,colors=simmap.col2,lwd=3,split.vertical=TRUE,ftype="off",direction = "l
 nodelabels(pie=pd2$ace,piecol=simmap.col2,cex=.6)
 tiplabels(pie=simmap.eco2[Mainland.tree2$tip.label,],piecol=simmap.col2,cex=0.4)
 
-#dev.off()
+dev.off()
 
 
 # Stayton C Tests ---------------------------------------------------------
@@ -659,7 +659,7 @@ tiplabels(pie=simmap.eco2[Mainland.tree2$tip.label,],piecol=simmap.col2,cex=0.4)
 ## and repeat
 traits <- as.matrix(phylopca$S[,1:5])
 convtips <- NewData$Species[which(NewData$Ground == "CG")]
-convSig(tree,traits,convtips,nsim =100)
+convSig(tree,traits,convtips,nsim =1000)
 
 ## perform with a priori ecomorph species and species classified before
 ## including the ground ecomorph
@@ -667,7 +667,7 @@ convSig(tree,traits,convtips,nsim =100)
 ## and repeat
 traits <- as.matrix(phylopca$S[,1:5])
 convtips <- NewData$Species[which(Pred.Eco$Pred.Eco == "CG")]
-convSig(tree,traits,convtips,nsim =100)
+convSig(tree,traits,convtips,nsim =1000)
 
 ## perform with a priori ecomorph species and species classified with
 ## the inclusion of the ground ecomorph
@@ -675,7 +675,7 @@ convSig(tree,traits,convtips,nsim =100)
 ## and repeat
 traits <- as.matrix(phylopca$S[,1:5])
 convtips <- NewData$Species[which(Pred.Eco2$Pred.Eco == "CG")]
-convSig(tree,traits,convtips,nsim =100)
+convSig(tree,traits,convtips,nsim =1000)
 
 ## perform with just mainland Draconura species classified before
 ## including the ground ecomorph
